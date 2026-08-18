@@ -336,7 +336,10 @@
                         <button onClick={() => setAdminTab('meters')} className={`px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap ${adminTab === 'meters' ? 'bg-zinc-900 text-white' : 'text-zinc-600 hover:bg-zinc-100'}`}>📊 จดมิเตอร์</button>
                         <button onClick={() => setAdminTab('invoices')} className={`px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap ${adminTab === 'invoices' ? 'bg-zinc-900 text-white' : 'text-zinc-600 hover:bg-zinc-100'}`}>📄 ออกบิล/พิมพ์</button>
                         <button onClick={() => setAdminTab('announcements')} className={`px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap ${adminTab === 'announcements' ? 'bg-zinc-900 text-white' : 'text-zinc-600 hover:bg-zinc-100'}`}>📢 ประกาศตลาด ({announcements.length})</button>
-                        <button onClick={() => setAdminTab('repairs')} className={`px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap ${adminTab === 'repairs' ? 'bg-zinc-900 text-white' : 'text-zinc-600 hover:bg-zinc-100'}`}>🛠️ แจ้งซ่อม ({repairs.filter(r => r.status !== 'แก้ไขแล้ว').length})</button>
+                        <button onClick={() => setAdminTab('repairs')} className={`px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap flex items-center gap-1 ${adminTab === 'repairs' ? 'bg-zinc-900 text-white' : 'text-zinc-600 hover:bg-zinc-100'}`}>
+                            🛠️ งานแจ้งซ่อม 
+                            {repairs.filter(r => r.status !== 'แก้ไขแล้ว').length > 0 && <span className="bg-red-500 text-white px-1.5 py-0.5 rounded-full text-[10px] ml-1 shadow-sm font-black">{repairs.filter(r => r.status !== 'แก้ไขแล้ว').length}</span>}
+                        </button>
                         <button onClick={() => setAdminTab('receipts')} className={`px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap ${adminTab === 'receipts' ? 'bg-zinc-900 text-white' : 'text-zinc-600 hover:bg-zinc-100'}`}>🧾 คำขอใบเสร็จ ({receipts.filter(r => r.status === 'รออนุมัติ').length})</button>
                         <button onClick={() => setAdminTab('settings')} className={`px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap ${adminTab === 'settings' ? 'bg-zinc-900 text-white' : 'text-zinc-600 hover:bg-zinc-100'}`}>⚙️ ตั้งค่า</button>
                     </div>
@@ -803,31 +806,11 @@
             const [selectedInvoice, setSelectedInvoice] = useState(null);
             const [selectedReceipt, setSelectedReceipt] = useState(null);
 
-            const [announcements, setAnnouncements] = useState(() => JSON.parse(localStorage.getItem('88_GARAGE_ANNOUNCEMENTS') || '[]'));
-            const [repairs, setRepairs] = useState(() => JSON.parse(localStorage.getItem('88_GARAGE_REPAIRS') || '[]'));
-            const [receipts, setReceipts] = useState(() => JSON.parse(localStorage.getItem('88_GARAGE_RECEIPTS') || '[]'));
-            const [users, setUsers] = useState(() => JSON.parse(localStorage.getItem('88_GARAGE_USERS') || '[]'));
-            const [meterData, setMeterData] = useState(() => JSON.parse(localStorage.getItem('88_GARAGE_METERS') || '{}'));
-
-            useEffect(() => { localStorage.setItem('88_GARAGE_USERS', JSON.stringify(users)); }, [users]);
-            useEffect(() => { localStorage.setItem('88_GARAGE_METERS', JSON.stringify(meterData)); }, [meterData]);
-            useEffect(() => { localStorage.setItem('88_GARAGE_ANNOUNCEMENTS', JSON.stringify(announcements)); }, [announcements]);
-            useEffect(() => { localStorage.setItem('88_GARAGE_REPAIRS', JSON.stringify(repairs)); }, [repairs]);
-            useEffect(() => { localStorage.setItem('88_GARAGE_RECEIPTS', JSON.stringify(receipts)); }, [receipts]);
-            useEffect(() => { if (gasUrl) localStorage.setItem('88_GARAGE_GAS_URL', gasUrl); }, [gasUrl]);
-
-            // Real-time multi-tab synchronization
-            useEffect(() => {
-                const handleStorageChange = (e) => {
-                    if (e.key === '88_GARAGE_REPAIRS' && e.newValue) setRepairs(JSON.parse(e.newValue));
-                    if (e.key === '88_GARAGE_ANNOUNCEMENTS' && e.newValue) setAnnouncements(JSON.parse(e.newValue));
-                    if (e.key === '88_GARAGE_RECEIPTS' && e.newValue) setReceipts(JSON.parse(e.newValue));
-                    if (e.key === '88_GARAGE_USERS' && e.newValue) setUsers(JSON.parse(e.newValue));
-                    if (e.key === '88_GARAGE_METERS' && e.newValue) setMeterData(JSON.parse(e.newValue));
-                };
-                window.addEventListener('storage', handleStorageChange);
-                return () => window.removeEventListener('storage', handleStorageChange);
-            }, []);
+            const [announcements, setAnnouncements] = useState([]);
+            const [repairs, setRepairs] = useState([]);
+            const [receipts, setReceipts] = useState([]);
+            const [users, setUsers] = useState([{ id: 1, name: "ร้านทดสอบ", stallNumber: "A-01", password: "123", rentOverride: 3500 }]);
+            const [meterData, setMeterData] = useState({});
 
             const fetchFromGoogleSheets = async () => {
                 if (!gasUrl) return;
