@@ -104,49 +104,105 @@
         const IconMegaphone = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.75} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M19.114 5.636a9 9 0 010 12.728M16.463 8.288a5.25 5.25 0 010 7.424M6.75 8.25l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.01 9.01 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z" /></svg>;
         const IconPrint = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.75} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0110.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0l.229 2.523a1.125 1.125 0 01-1.12 1.227H7.231a1.125 1.125 0 01-1.12-1.227L6.34 18m11.32 0h-11.32m12.322-5.462A2.25 2.25 0 0018 10.5V6a2.25 2.25 0 00-2.25-2.25H8.25A2.25 2.25 0 006 6v4.5m12 0a2.25 2.25 0 01-2.25 2.25H8.25A2.25 2.25 0 016 10.5m12 0V18" /></svg>;
         const IconSheets = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.75} stroke="currentColor" className="w-5 h-5 text-emerald-600"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" /></svg>;
+        const IconRefresh = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.75} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>;
 
         const GOOGLE_APPS_SCRIPT_CODE = `function doGet(e) {
-  var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
-  var data = sheet.getDataRange().getValues();
-  if (data.length <= 1) {
-    return ContentService.createTextOutput(JSON.stringify({ status: "success", data: [] }))
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var billSheet = ss.getSheetByName("Bills") || ss.getSheets()[0];
+    var billData = billSheet.getDataRange().getValues();
+    var bills = [];
+    if (billData.length > 1) {
+      var billHeaders = billData[0];
+      var billRows = billData.slice(1);
+      bills = billRows.map(function(row) {
+        var obj = {};
+        billHeaders.forEach(function(header, idx) { obj[header] = row[idx]; });
+        return obj;
+      });
+    }
+
+    var storeSheet = ss.getSheetByName("Stores");
+    var stores = [];
+    if (storeSheet) {
+      var storeData = storeSheet.getDataRange().getValues();
+      if (storeData.length > 1) {
+        var storeHeaders = storeData[0];
+        var storeRows = storeData.slice(1);
+        stores = storeRows.map(function(row) {
+          var obj = {};
+          storeHeaders.forEach(function(header, idx) { obj[header] = row[idx]; });
+          return obj;
+        });
+      }
+    }
+
+    return ContentService.createTextOutput(JSON.stringify({ status: "success", data: bills, stores: stores }))
+      .setMimeType(ContentService.MimeType.JSON);
+  } catch (err) {
+    return ContentService.createTextOutput(JSON.stringify({ status: "error", message: err.toString() }))
       .setMimeType(ContentService.MimeType.JSON);
   }
-  var headers = data[0];
-  var rows = data.slice(1);
-  var result = rows.map(function(row) {
-    var obj = {};
-    headers.forEach(function(header, index) { obj[header] = row[index]; });
-    return obj;
-  });
-  return ContentService.createTextOutput(JSON.stringify({ status: "success", data: result }))
-    .setMimeType(ContentService.MimeType.JSON);
 }
 
 function doPost(e) {
   try {
     var contents = JSON.parse(e.postData.contents);
-    var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
-    if (sheet.getLastRow() === 0) {
-      sheet.appendRow([
-        "Timestamp", "StallNumber", "TenantName", "RentRate", 
-        "WaterUnits", "WaterRate", "WaterAmount", 
-        "ElectricUnits", "ElectricRate", "ElectricAmount", 
-        "TrashFee", "TotalAmount", "Month", "Status"
-      ]);
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var action = contents.action || "save_bills";
+    var items = Array.isArray(contents.items) ? contents.items : (Array.isArray(contents) ? contents : [contents]);
+
+    if (action === "save_stores") {
+      var storeSheet = ss.getSheetByName("Stores") || ss.insertSheet("Stores");
+      if (storeSheet.getLastRow() === 0) {
+        storeSheet.appendRow(["StallNumber", "ชื่อร้าน", "รหัสผ่าน", "ค่าเช่าร้าน", "วันที่ลงทะเบียน"]);
+      }
+      var existingStoreData = storeSheet.getDataRange().getValues();
+      items.forEach(function(item) {
+        var stall = String(item.stallNumber || item.StallNumber || "").trim();
+        var storeName = String(item.tenantName || item.ชื่อร้าน || "").trim();
+        var pass = String(item.password || item.รหัสผ่าน || "123").trim();
+        var rent = Number(item.rentOverride || item.ค่าเช่าร้าน) || 0;
+        var foundRow = -1;
+        for (var i = 1; i < existingStoreData.length; i++) {
+          if (String(existingStoreData[i][0]).trim() === stall || String(existingStoreData[i][1]).trim() === storeName) {
+            foundRow = i + 1; break;
+          }
+        }
+        var rowValues = [stall, storeName, pass, rent, new Date()];
+        if (foundRow > 0) storeSheet.getRange(foundRow, 1, 1, rowValues.length).setValues([rowValues]);
+        else storeSheet.appendRow(rowValues);
+      });
+      return ContentService.createTextOutput(JSON.stringify({ status: "success", message: "บันทึกข้อมูลจัดการร้านค้าเรียบร้อยแล้ว" }))
+        .setMimeType(ContentService.MimeType.JSON);
+    } else {
+      var billSheet = ss.getSheetByName("Bills") || ss.getSheets()[0];
+      if (billSheet.getLastRow() === 0) {
+        billSheet.appendRow(["Timestamp", "StallNumber", "ชื่อร้าน", "หน่วยค่าน้ำ", "หน่วยค่าไฟ", "ค่าเช่าร้าน", "ยอดรวม", "Status"]);
+      }
+      var existingBillData = billSheet.getDataRange().getValues();
+      items.forEach(function(item) {
+        var stall = String(item.stallNumber || item.StallNumber || "").trim();
+        var storeName = String(item.tenantName || item.ชื่อร้าน || "").trim();
+        var waterUnits = Number(item.waterUnits !== undefined ? item.waterUnits : item["หน่วยค่าน้ำ"]) || 0;
+        var electricUnits = Number(item.electricUnits !== undefined ? item.electricUnits : item["หน่วยค่าไฟ"]) || 0;
+        var rentRate = Number(item.rentRate !== undefined ? item.rentRate : item["ค่าเช่าร้าน"]) || 0;
+        var totalAmount = Number(item.totalAmount !== undefined ? item.totalAmount : item["ยอดรวม"]) || 0;
+        var status = item.status || item.Status || "ค้างชำระ";
+
+        var foundRow = -1;
+        for (var i = 1; i < existingBillData.length; i++) {
+          if (String(existingBillData[i][1]).trim() === stall && stall !== "") {
+            foundRow = i + 1; break;
+          }
+        }
+        var rowValues = [new Date(), stall, storeName, waterUnits, electricUnits, rentRate, totalAmount, status];
+        if (foundRow > 0) billSheet.getRange(foundRow, 1, 1, rowValues.length).setValues([rowValues]);
+        else billSheet.appendRow(rowValues);
+      });
+      return ContentService.createTextOutput(JSON.stringify({ status: "success", message: "บันทึกข้อมูลเรียบร้อยแล้ว" }))
+        .setMimeType(ContentService.MimeType.JSON);
     }
-    var items = Array.isArray(contents) ? contents : [contents];
-    items.forEach(function(item) {
-      sheet.appendRow([
-        new Date(),
-        item.stallNumber || "", item.tenantName || "", item.rentRate || 0,
-        item.waterUnits || 0, item.waterRate || 0, item.waterAmount || 0,
-        item.electricUnits || 0, item.electricRate || 0, item.electricAmount || 0,
-        item.trashFee || 0, item.totalAmount || 0, item.month || "สิงหาคม 2026", item.status || "ค้างชำระ"
-      ]);
-    });
-    return ContentService.createTextOutput(JSON.stringify({ status: "success", message: "บันทึกข้อมูลเรียบร้อย" }))
-      .setMimeType(ContentService.MimeType.JSON);
   } catch(err) {
     return ContentService.createTextOutput(JSON.stringify({ status: "error", message: err.toString() }))
       .setMimeType(ContentService.MimeType.JSON);
@@ -177,13 +233,14 @@ function doPost(e) {
 
             const [gasUrl, setGasUrl] = useState(localStorage.getItem('88_GARAGE_GAS_URL') || '');
             const [isSyncing, setIsSyncing] = useState(false);
+            const [isLoadingSheet, setIsLoadingSheet] = useState(false);
             const [showGasScriptModal, setShowGasScriptModal] = useState(false);
             const [selectedInvoice, setSelectedInvoice] = useState(null);
 
             const [users, setUsers] = useState(() => {
                 const saved = localStorage.getItem('88_GARAGE_USERS');
                 return saved ? JSON.parse(saved) : [
-                    { id: 1, name: "สมชาย ขายดี", password: "123", stallNumber: "A-12", rentOverride: 3500 }
+                    { id: 1, name: "สมชาย ขายดี (ร้าน A-12)", password: "123", stallNumber: "A-12", rentOverride: 3500 }
                 ];
             });
             
@@ -203,8 +260,59 @@ function doPost(e) {
             }, [meterData]);
 
             useEffect(() => {
-                if (gasUrl) localStorage.setItem('88_GARAGE_GAS_URL', gasUrl);
+                if (gasUrl) {
+                    localStorage.setItem('88_GARAGE_GAS_URL', gasUrl);
+                    fetchFromGoogleSheets();
+                }
             }, [gasUrl]);
+
+            const fetchFromGoogleSheets = async () => {
+                if (!gasUrl) return;
+                setIsLoadingSheet(true);
+                try {
+                    const res = await fetch(gasUrl);
+                    const json = await res.json();
+                    
+                    if (json.status === 'success') {
+                        // อัปเดตข้อมูลมิเตอร์ถ้า Admin มีการแก้ไขใน Google Sheet
+                        if (json.data && json.data.length > 0) {
+                            const newMeters = { ...meterData };
+                            json.data.forEach(row => {
+                                const stall = row.StallNumber || row.stallNumber;
+                                if (stall) {
+                                    const waterUnits = Number(row["หน่วยค่าน้ำ"] !== undefined ? row["หน่วยค่าน้ำ"] : row.WaterUnits) || 0;
+                                    const electricUnits = Number(row["หน่วยค่าไฟ"] !== undefined ? row["หน่วยค่าไฟ"] : row.ElectricUnits) || 0;
+                                    const status = row.Status || row.status || 'ค้างชำระ';
+                                    newMeters[stall] = {
+                                        ...(newMeters[stall] || {}),
+                                        water: waterUnits,
+                                        electric: electricUnits,
+                                        status: status
+                                    };
+                                }
+                            });
+                            setMeterData(newMeters);
+                        }
+
+                        // อัปเดตข้อมูลร้านค้าถ้ามีข้อมูลในแท็บ Stores
+                        if (json.stores && json.stores.length > 0) {
+                            const fetchedUsers = json.stores.map((s, idx) => ({
+                                id: Date.now() + idx,
+                                name: s["ชื่อร้าน"] || s.tenantName || `ร้าน ${s.StallNumber}`,
+                                password: String(s["รหัสผ่าน"] || s.password || "123"),
+                                stallNumber: String(s.StallNumber || s.stallNumber || `A-${idx+1}`),
+                                rentOverride: Number(s["ค่าเช่าร้าน"] || s.rentOverride) || rates.rentRate
+                            }));
+                            setUsers(fetchedUsers);
+                        }
+                        showToast("ดึงข้อมูลล่าสุดจาก Google Sheets สำเร็จ!", "success");
+                    }
+                } catch (err) {
+                    console.log("Could not auto-fetch from Google Sheets:", err);
+                } finally {
+                    setIsLoadingSheet(false);
+                }
+            };
 
             const calculateStallBill = (stallNo) => {
                 const user = users.find(u => u.stallNumber === stallNo) || { name: 'ผู้เช่าทั่วไป', rentOverride: rates.rentRate };
@@ -220,36 +328,40 @@ function doPost(e) {
 
                 return {
                     stallNumber: stallNo,
-                    tenantName: user.name,
-                    rentRate: rent,
-                    waterUnits,
+                    tenantName: user.name, // ชื่อร้าน
+                    rentRate: rent, // ค่าเช่าร้าน
+                    waterUnits, // หน่วยค่าน้ำ
                     waterRate: rates.waterRate,
                     waterAmount,
-                    electricUnits,
+                    electricUnits, // หน่วยค่าไฟ
                     electricRate: rates.electricRate,
                     electricAmount,
                     trashFee,
-                    totalAmount,
+                    totalAmount, // ยอดรวม
                     status: meters.status || 'ค้างชำระ',
                     billingMonth: 'สิงหาคม 2026'
                 };
             };
 
-            const syncToGoogleSheets = async () => {
+            const syncToGoogleSheets = async (customPayload = null, actionType = 'save_bills') => {
                 if (!gasUrl) {
-                    showToast("กรุณาใส่ Google Web App URL ในส่วนตั้งค่า Admin ก่อน", "error");
+                    showToast("อย่าลืมใส่ Google Web App URL ในส่วนตั้งค่าด้วยครับ", "error");
                     return;
                 }
                 setIsSyncing(true);
                 try {
-                    const payload = users.map(u => calculateStallBill(u.stallNumber));
+                    const payloadItems = customPayload || users.map(u => calculateStallBill(u.stallNumber));
+                    const bodyData = {
+                        action: actionType,
+                        items: payloadItems
+                    };
                     await fetch(gasUrl, {
                         method: 'POST',
                         mode: 'no-cors',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(payload)
+                        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                        body: JSON.stringify(bodyData)
                     });
-                    showToast("ส่งข้อมูลไปยัง Google Sheets เรียบร้อยแล้ว", "success");
+                    showToast("บันทึกและส่งข้อมูลไป Google Sheets เรียบร้อยแล้ว!", "success");
                 } catch (err) {
                     showToast("เกิดข้อผิดพลาดในการเชื่อมต่อ Google Sheets", "error");
                 } finally {
@@ -261,16 +373,16 @@ function doPost(e) {
                 e.preventDefault();
                 const name = e.target.name.value.trim();
                 const password = e.target.password.value;
-                const user = users.find(u => u.name === name && u.password === password);
+                const user = users.find(u => (u.name === name || u.stallNumber === name) && u.password === password);
                 
                 if (user) {
                     setCurrentUser(user);
                     setIsAuthenticated(true);
                     setIsAdmin(false);
                     setActiveTab('home');
-                    showToast(`ยินดีต้อนรับคุณ ${user.name}`, "success");
+                    showToast(`ยินดีต้อนรับ ${user.name}`, "success");
                 } else {
-                    showToast("ชื่อผู้ใช้ หรือ รหัสผ่านไม่ถูกต้อง", "error");
+                    showToast("ชื่อผู้ใช้/ล็อค หรือ รหัสผ่านไม่ถูกต้อง", "error");
                 }
             };
 
@@ -280,16 +392,21 @@ function doPost(e) {
                 const password = e.target.password.value;
                 const stallNumber = e.target.stallNumber.value.trim();
                 
-                if(users.find(u => u.name === name)) {
-                    showToast("ชื่อนี้ถูกใช้งานแล้ว", "error");
+                if(users.find(u => u.name === name || u.stallNumber === stallNumber)) {
+                    showToast("ชื่อร้านหรือล็อคนี้ถูกใช้งานแล้ว", "error");
                     return;
                 }
                 
                 const newUser = { id: Date.now(), name, password, stallNumber, rentOverride: rates.rentRate };
-                setUsers([...users, newUser]);
+                const updatedUsers = [...users, newUser];
+                setUsers(updatedUsers);
                 
                 if(!meterData[stallNumber]) {
-                    setMeterData(prev => ({...prev, [stallNumber]: { water: 0, electric: 0, waterImg: null, electricImg: null, status: 'ค้างชำระ' }}));
+                    setMeterData(prev => ({...prev, [stallNumber]: { water: 0, electric: 0, status: 'ค้างชำระ' }}));
+                }
+
+                if(gasUrl) {
+                    syncToGoogleSheets(updatedUsers, 'save_stores');
                 }
 
                 showToast("ลงทะเบียนสำเร็จ กรุณาเข้าสู่ระบบ", "success");
@@ -324,7 +441,7 @@ function doPost(e) {
                             <h1 className="text-2xl font-black text-zinc-900 tracking-tight">88 GARAGE</h1>
                             <p className="text-xs text-zinc-500 mt-1 font-medium">
                                 {authMode === 'login' ? 'ระบบผู้เช่า (Tenant App)' : 
-                                 authMode === 'register' ? 'ลงทะเบียนผู้เช่าใหม่' : 
+                                 authMode === 'register' ? 'ลงทะเบียนผู้เช่า/ร้านค้าใหม่' : 
                                  'ระบบจัดการผู้ดูแลระบบ (Admin)'}
                             </p>
                         </div>
@@ -332,8 +449,8 @@ function doPost(e) {
                         {authMode === 'login' && (
                             <form onSubmit={handleLogin} className="space-y-4">
                                 <div>
-                                    <label className="block text-xs font-bold text-zinc-700 mb-1">ชื่อผู้ใช้งาน</label>
-                                    <input name="name" type="text" required className="w-full border border-zinc-300 rounded-xl p-3 text-sm focus:outline-none focus:border-zinc-900 bg-zinc-50" placeholder="ระบุชื่อที่คุณตั้งไว้" />
+                                    <label className="block text-xs font-bold text-zinc-700 mb-1">ชื่อร้าน / หมายเลขล็อค</label>
+                                    <input name="name" type="text" required className="w-full border border-zinc-300 rounded-xl p-3 text-sm focus:outline-none focus:border-zinc-900 bg-zinc-50" placeholder="เช่น ร้านกาแฟ A-12 หรือ A-12" />
                                 </div>
                                 <div>
                                     <label className="block text-xs font-bold text-zinc-700 mb-1">รหัสผ่าน</label>
@@ -351,8 +468,8 @@ function doPost(e) {
                         {authMode === 'register' && (
                             <form onSubmit={handleRegister} className="space-y-4">
                                 <div>
-                                    <label className="block text-xs font-bold text-zinc-700 mb-1">ชื่อ-นามสกุล</label>
-                                    <input name="name" type="text" required className="w-full border border-zinc-300 rounded-xl p-3 text-sm focus:outline-none focus:border-zinc-900 bg-zinc-50" placeholder="เช่น สมชาย ใจดี" />
+                                    <label className="block text-xs font-bold text-zinc-700 mb-1">ชื่อร้าน / ผู้เช่า</label>
+                                    <input name="name" type="text" required className="w-full border border-zinc-300 rounded-xl p-3 text-sm focus:outline-none focus:border-zinc-900 bg-zinc-50" placeholder="เช่น ร้านกาแฟ อร่อยดี" />
                                 </div>
                                 <div>
                                     <label className="block text-xs font-bold text-zinc-700 mb-1">รหัสผ่าน</label>
@@ -360,7 +477,7 @@ function doPost(e) {
                                 </div>
                                 <div>
                                     <label className="block text-xs font-bold text-zinc-700 mb-1">หมายเลขล็อค/พื้นที่เช่า</label>
-                                    <input name="stallNumber" type="text" required className="w-full border border-zinc-300 rounded-xl p-3 text-sm focus:outline-none focus:border-zinc-900 bg-zinc-50" placeholder="เช่น A-01, B-12" />
+                                    <input name="stallNumber" type="text" required className="w-full border border-zinc-300 rounded-xl p-3 text-sm focus:outline-none focus:border-zinc-900 bg-zinc-50" placeholder="เช่น A-12, B-01" />
                                 </div>
                                 <button type="submit" className="w-full bg-zinc-900 text-white font-bold py-3.5 rounded-xl hover:bg-zinc-800 transition-colors shadow-md text-sm">ยืนยันลงทะเบียน</button>
                                 
@@ -388,10 +505,16 @@ function doPost(e) {
             );
 
             const ViewAdmin = () => {
-                const [adminTab, setAdminTab] = useState('meters');
+                const [adminTab, setAdminTab] = useState('stores');
                 const [selectedStall, setSelectedStall] = useState('');
                 const [water, setWater] = useState('');
                 const [electric, setElectric] = useState('');
+
+                const [newStoreName, setNewStoreName] = useState('');
+                const [newStoreStall, setNewStoreStall] = useState('');
+                const [newStorePassword, setNewStorePassword] = useState('123');
+                const [newStoreRent, setNewStoreRent] = useState(rates.rentRate);
+                const [editingStoreId, setEditingStoreId] = useState(null);
 
                 const handleStallSelect = (e) => {
                     const stall = e.target.value;
@@ -406,15 +529,77 @@ function doPost(e) {
 
                 const handleSaveMeter = () => {
                     if(!selectedStall) return showToast('กรุณาเลือกล็อคเพื่อบันทึก', 'error');
-                    setMeterData(prev => ({
-                        ...prev,
+                    
+                    const updatedMeters = {
+                        ...meterData,
                         [selectedStall]: {
-                            ...prev[selectedStall],
+                            ...meterData[selectedStall],
                             water: Number(water),
                             electric: Number(electric)
                         }
-                    }));
-                    showToast(`บันทึกมิเตอร์ล็อค ${selectedStall} เรียบร้อย`, 'success');
+                    };
+                    setMeterData(updatedMeters);
+
+                    const stallBill = calculateStallBill(selectedStall);
+                    stallBill.waterUnits = Number(water);
+                    stallBill.waterAmount = Number(water) * Number(rates.waterRate);
+                    stallBill.electricUnits = Number(electric);
+                    stallBill.electricAmount = Number(electric) * Number(rates.electricRate);
+                    stallBill.totalAmount = stallBill.rentRate + stallBill.waterAmount + stallBill.electricAmount + stallBill.trashFee;
+
+                    if (gasUrl) {
+                        syncToGoogleSheets([stallBill], 'save_bills');
+                    } else {
+                        showToast(`บันทึกมิเตอร์ล็อค ${selectedStall} แล้ว`, 'info');
+                    }
+                };
+
+                const handleSaveStore = (e) => {
+                    e.preventDefault();
+                    if(!newStoreName || !newStoreStall) {
+                        showToast("กรุณากรอกชื่อร้านและหมายเลขล็อค", "error");
+                        return;
+                    }
+
+                    let updatedList;
+                    if (editingStoreId) {
+                        updatedList = users.map(u => u.id === editingStoreId ? {
+                            ...u,
+                            name: newStoreName,
+                            stallNumber: newStoreStall,
+                            password: newStorePassword,
+                            rentOverride: Number(newStoreRent)
+                        } : u);
+                    } else {
+                        const newStore = {
+                            id: Date.now(),
+                            name: newStoreName,
+                            stallNumber: newStoreStall,
+                            password: newStorePassword,
+                            rentOverride: Number(newStoreRent)
+                        };
+                        updatedList = [...users, newStore];
+                    }
+
+                    setUsers(updatedList);
+                    if(!meterData[newStoreStall]) {
+                        setMeterData(prev => ({...prev, [newStoreStall]: { water: 0, electric: 0, status: 'ค้างชำระ' }}));
+                    }
+
+                    if (gasUrl) {
+                        syncToGoogleSheets(updatedList, 'save_stores');
+                    }
+
+                    showToast(editingStoreId ? "แก้ไขข้อมูลร้านเรียบร้อยแล้ว" : "เพิ่มร้านค้าใหม่เรียบร้อยแล้ว", "success");
+                    setNewStoreName(''); setNewStoreStall(''); setNewStorePassword('123'); setNewStoreRent(rates.rentRate); setEditingStoreId(null);
+                };
+
+                const startEditStore = (u) => {
+                    setEditingStoreId(u.id);
+                    setNewStoreName(u.name);
+                    setNewStoreStall(u.stallNumber);
+                    setNewStorePassword(u.password || '123');
+                    setNewStoreRent(u.rentOverride || rates.rentRate);
                 };
 
                 return (
@@ -427,60 +612,146 @@ function doPost(e) {
                                     <p className="text-[10px] text-zinc-400">88 GARAGE Backend</p>
                                 </div>
                             </div>
-                            <button onClick={handleLogout} className="p-2 rounded-xl bg-zinc-800 text-zinc-300 hover:text-white">
-                                <IconLogout />
-                            </button>
+                            <div className="flex items-center gap-2">
+                                {gasUrl && (
+                                    <button onClick={fetchFromGoogleSheets} disabled={isLoadingSheet} title="ดึงข้อมูลล่าสุดจาก Google Sheets" className="p-2 rounded-xl bg-zinc-800 text-emerald-400 hover:text-white flex items-center gap-1 text-xs font-bold">
+                                        <IconRefresh /> {isLoadingSheet ? 'โหลด...' : 'ดึงข้อมูล Sheet'}
+                                    </button>
+                                )}
+                                <button onClick={handleLogout} className="p-2 rounded-xl bg-zinc-800 text-zinc-300 hover:text-white">
+                                    <IconLogout />
+                                </button>
+                            </div>
                         </div>
 
-                        <div className="bg-white border-b border-zinc-200 px-2 py-2 flex gap-1 justify-around sticky top-[68px] z-10 shadow-sm">
-                            <button onClick={() => setAdminTab('meters')} className={`px-3 py-2 rounded-xl text-xs font-bold transition-all ${adminTab === 'meters' ? 'bg-zinc-900 text-white' : 'text-zinc-600 hover:bg-zinc-100'}`}>
+                        {/* Admin Navigation Tabs */}
+                        <div className="bg-white border-b border-zinc-200 px-2 py-2 flex gap-1 justify-around sticky top-[68px] z-10 shadow-sm overflow-x-auto no-scrollbar">
+                            <button onClick={() => setAdminTab('stores')} className={`px-3 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1 ${adminTab === 'stores' ? 'bg-zinc-900 text-white' : 'text-zinc-600 hover:bg-zinc-100'}`}>
+                                🏪 จัดการร้าน Data ({users.length})
+                            </button>
+                            <button onClick={() => setAdminTab('meters')} className={`px-3 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${adminTab === 'meters' ? 'bg-zinc-900 text-white' : 'text-zinc-600 hover:bg-zinc-100'}`}>
                                 📊 จดมิเตอร์
                             </button>
-                            <button onClick={() => setAdminTab('invoices')} className={`px-3 py-2 rounded-xl text-xs font-bold transition-all ${adminTab === 'invoices' ? 'bg-zinc-900 text-white' : 'text-zinc-600 hover:bg-zinc-100'}`}>
+                            <button onClick={() => setAdminTab('invoices')} className={`px-3 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${adminTab === 'invoices' ? 'bg-zinc-900 text-white' : 'text-zinc-600 hover:bg-zinc-100'}`}>
                                 📄 ออกบิล/พิมพ์
                             </button>
-                            <button onClick={() => setAdminTab('settings')} className={`px-3 py-2 rounded-xl text-xs font-bold transition-all ${adminTab === 'settings' ? 'bg-zinc-900 text-white' : 'text-zinc-600 hover:bg-zinc-100'}`}>
+                            <button onClick={() => setAdminTab('settings')} className={`px-3 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${adminTab === 'settings' ? 'bg-zinc-900 text-white' : 'text-zinc-600 hover:bg-zinc-100'}`}>
                                 ⚙️ Google Sheets
                             </button>
                         </div>
                         
                         <div className="p-4 space-y-4">
+                            {/* TAB: Store Data Management */}
+                            {adminTab === 'stores' && (
+                                <div className="space-y-4">
+                                    <div className="bg-white rounded-2xl p-4 shadow-sm border border-zinc-200 space-y-3">
+                                        <h2 className="text-sm font-bold text-zinc-800 border-b pb-2 flex justify-between items-center">
+                                            <span>{editingStoreId ? '✏️ แก้ไขข้อมูลร้านค้า' : '➕ เพิ่มร้านค้า/ผู้เช่าใหม่'}</span>
+                                            {editingStoreId && (
+                                                <button onClick={() => { setEditingStoreId(null); setNewStoreName(''); setNewStoreStall(''); }} className="text-xs text-red-500 font-normal">
+                                                    ยกเลิกแก้ไข
+                                                </button>
+                                            )}
+                                        </h2>
+                                        <form onSubmit={handleSaveStore} className="space-y-3">
+                                            <div className="grid grid-cols-2 gap-2">
+                                                <div>
+                                                    <label className="block text-[11px] font-bold text-zinc-600 mb-1">1. ชื่อร้าน / ผู้เช่า</label>
+                                                    <input type="text" value={newStoreName} onChange={e => setNewStoreName(e.target.value)} placeholder="เช่น ร้านส้มตำ ล็อค A1" required className="w-full border rounded-xl p-2.5 text-xs bg-zinc-50" />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-[11px] font-bold text-zinc-600 mb-1">หมายเลขล็อค</label>
+                                                    <input type="text" value={newStoreStall} onChange={e => setNewStoreStall(e.target.value)} placeholder="เช่น A-12" required className="w-full border rounded-xl p-2.5 text-xs bg-zinc-50" />
+                                                </div>
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-2">
+                                                <div>
+                                                    <label className="block text-[11px] font-bold text-zinc-600 mb-1">4. ค่าเช่าร้าน (บาท)</label>
+                                                    <input type="number" value={newStoreRent} onChange={e => setNewStoreRent(e.target.value)} placeholder="3500" required className="w-full border rounded-xl p-2.5 text-xs bg-zinc-50 font-bold" />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-[11px] font-bold text-zinc-600 mb-1">รหัสผ่านผู้เช่า</label>
+                                                    <input type="text" value={newStorePassword} onChange={e => setNewStorePassword(e.target.value)} placeholder="123" required className="w-full border rounded-xl p-2.5 text-xs bg-zinc-50" />
+                                                </div>
+                                            </div>
+                                            <button type="submit" className="w-full bg-zinc-900 text-white font-bold py-2.5 rounded-xl text-xs shadow-md">
+                                                {editingStoreId ? 'บันทึกการแก้ไขร้านค้า' : 'บันทึกข้อมูลร้านใหม่'}
+                                            </button>
+                                        </form>
+                                    </div>
+
+                                    {/* Registered Stores List */}
+                                    <div className="bg-white rounded-2xl p-4 shadow-sm border border-zinc-200 space-y-3">
+                                        <div className="flex justify-between items-center border-b pb-2">
+                                            <h3 className="text-xs font-bold text-zinc-800">ข้อมูลร้านค้าที่ลงทะเบียนทั้งหมด ({users.length} ร้าน)</h3>
+                                            {gasUrl && (
+                                                <button onClick={() => syncToGoogleSheets(users, 'save_stores')} disabled={isSyncing} className="text-[11px] bg-emerald-600 text-white px-2.5 py-1 rounded-lg font-bold flex items-center gap-1">
+                                                    <IconSheets /> ซิงค์ลง Sheet
+                                                </button>
+                                            )}
+                                        </div>
+
+                                        <div className="divide-y divide-zinc-100">
+                                            {users.map(u => (
+                                                <div key={u.id} className="py-2.5 flex justify-between items-center text-xs">
+                                                    <div>
+                                                        <div className="font-bold text-zinc-900">{u.name}</div>
+                                                        <div className="text-[11px] text-zinc-500">ล็อค: <span className="font-mono text-zinc-800 font-bold">{u.stallNumber}</span> | รหัส: <span className="font-mono">{u.password}</span></div>
+                                                    </div>
+                                                    <div className="text-right flex items-center gap-2">
+                                                        <div>
+                                                            <div className="font-bold text-zinc-900">฿{(u.rentOverride || rates.rentRate).toLocaleString()}</div>
+                                                            <div className="text-[10px] text-zinc-400">ค่าเช่าร้าน</div>
+                                                        </div>
+                                                        <button onClick={() => startEditStore(u)} className="p-1.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 rounded-lg text-[10px] font-bold">
+                                                            แก้ไข
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* TAB: Meters */}
                             {adminTab === 'meters' && (
                                 <div className="bg-white rounded-2xl p-5 shadow-sm border border-zinc-200 space-y-4">
                                     <h2 className="text-sm font-bold text-zinc-800 border-b pb-2">จดบันทึกมิเตอร์ประจำเดือน</h2>
                                     <div>
-                                        <label className="block text-xs font-bold text-zinc-700 mb-1">เลือกล็อคผู้เช่า</label>
+                                        <label className="block text-xs font-bold text-zinc-700 mb-1">1. เลือกล็อค / ชื่อร้าน</label>
                                         <select value={selectedStall} onChange={handleStallSelect} className="w-full border border-zinc-300 rounded-xl p-3 text-sm bg-zinc-50 font-medium">
                                             <option value="">-- เลือกล็อคเช่า --</option>
                                             {users.map(u => (
-                                                <option key={u.id} value={u.stallNumber}>ล็อค: {u.stallNumber} ({u.name})</option>
+                                                <option key={u.id} value={u.stallNumber}>ล็อค: {u.stallNumber} - {u.name}</option>
                                             ))}
                                         </select>
                                     </div>
 
                                     <div className="grid grid-cols-2 gap-3">
                                         <div className="bg-sky-50 p-3 rounded-xl border border-sky-100">
-                                            <label className="flex items-center gap-1 text-xs font-bold text-sky-800 mb-1.5"><IconWater /> น้ำ (หน่วย)</label>
-                                            <input type="number" value={water} onChange={e => setWater(e.target.value)} className="w-full border border-sky-200 rounded-lg p-2.5 text-center font-bold text-sm" placeholder="0" />
+                                            <label className="flex items-center gap-1 text-xs font-bold text-sky-800 mb-1.5"><IconWater /> 2. หน่วยค่าน้ำ</label>
+                                            <input type="number" value={water} onChange={e => setWater(e.target.value)} className="w-full border border-sky-200 rounded-lg p-2.5 text-center font-bold text-sm bg-white" placeholder="0" />
                                         </div>
                                         <div className="bg-amber-50 p-3 rounded-xl border border-amber-100">
-                                            <label className="flex items-center gap-1 text-xs font-bold text-amber-800 mb-1.5"><IconElectric /> ไฟ (หน่วย)</label>
-                                            <input type="number" value={electric} onChange={e => setElectric(e.target.value)} className="w-full border border-amber-200 rounded-lg p-2.5 text-center font-bold text-sm" placeholder="0" />
+                                            <label className="flex items-center gap-1 text-xs font-bold text-amber-800 mb-1.5"><IconElectric /> 3. หน่วยค่าไฟ</label>
+                                            <input type="number" value={electric} onChange={e => setElectric(e.target.value)} className="w-full border border-amber-200 rounded-lg p-2.5 text-center font-bold text-sm bg-white" placeholder="0" />
                                         </div>
                                     </div>
 
                                     <button onClick={handleSaveMeter} className="w-full bg-zinc-900 text-white font-bold py-3 rounded-xl text-sm shadow-md">
-                                        บันทึกข้อมูลมิเตอร์
+                                        บันทึกข้อมูลมิเตอร์และยอดรวม
                                     </button>
                                 </div>
                             )}
 
+                            {/* TAB: Invoices */}
                             {adminTab === 'invoices' && (
                                 <div className="space-y-3">
                                     <div className="flex justify-between items-center mb-1">
-                                        <h2 className="text-sm font-bold text-zinc-800">รายการใบแจ้งหนี้</h2>
-                                        <button onClick={syncToGoogleSheets} disabled={isSyncing} className="text-xs bg-emerald-600 text-white px-3 py-1.5 rounded-lg font-bold flex items-center gap-1 shadow-sm">
-                                            <IconSheets /> {isSyncing ? "กำลังส่ง..." : "ซิงค์ไป Google Sheets"}
+                                        <h2 className="text-sm font-bold text-zinc-800">ตารางยอดรวมค่าบริการ (ตาม Sheet)</h2>
+                                        <button onClick={() => syncToGoogleSheets(null, 'save_bills')} disabled={isSyncing} className="text-xs bg-emerald-600 text-white px-3 py-1.5 rounded-lg font-bold flex items-center gap-1 shadow-sm">
+                                            <IconSheets /> {isSyncing ? "กำลังส่ง..." : "ซิงค์ลง Google Sheets"}
                                         </button>
                                     </div>
 
@@ -490,8 +761,8 @@ function doPost(e) {
                                             <div key={u.id} className="bg-white rounded-2xl p-4 border border-zinc-200 shadow-sm space-y-3">
                                                 <div className="flex justify-between items-start border-b pb-2">
                                                     <div>
-                                                        <span className="font-black text-base text-zinc-900">ล็อค {u.stallNumber}</span>
-                                                        <p className="text-xs text-zinc-500">{u.name}</p>
+                                                        <span className="font-black text-base text-zinc-900">1. ชื่อร้าน: {u.name}</span>
+                                                        <p className="text-xs text-zinc-500 font-mono">ล็อค: {u.stallNumber}</p>
                                                     </div>
                                                     <span className="text-xs px-2.5 py-1 rounded-full font-bold bg-amber-100 text-amber-800">
                                                         {bill.status}
@@ -499,14 +770,14 @@ function doPost(e) {
                                                 </div>
 
                                                 <div className="grid grid-cols-2 gap-2 text-xs text-zinc-600 bg-zinc-50 p-2.5 rounded-xl font-medium">
-                                                    <div>ค่าเช่า: <span className="font-bold text-zinc-900">฿{bill.rentRate.toLocaleString()}</span></div>
-                                                    <div>ค่าน้ำ ({bill.waterUnits}u): <span className="font-bold text-zinc-900">฿{bill.waterAmount.toLocaleString()}</span></div>
+                                                    <div>2. หน่วยค่าน้ำ: <span className="font-bold text-sky-700">{bill.waterUnits} หน่วย</span></div>
+                                                    <div>3. หน่วยค่าไฟ: <span className="font-bold text-amber-700">{bill.electricUnits} หน่วย</span></div>
+                                                    <div>4. ค่าเช่าร้าน: <span className="font-bold text-zinc-900">฿{bill.rentRate.toLocaleString()}</span></div>
                                                     <div>ค่าส่วนกลาง: <span className="font-bold text-zinc-900">฿{bill.trashFee.toLocaleString()}</span></div>
-                                                    <div>ค่าไฟ ({bill.electricUnits}u): <span className="font-bold text-zinc-900">฿{bill.electricAmount.toLocaleString()}</span></div>
                                                 </div>
 
-                                                <div className="flex justify-between items-center pt-1">
-                                                    <div className="text-sm font-black text-zinc-900">ยอดรวม: ฿{bill.totalAmount.toLocaleString()}</div>
+                                                <div className="flex justify-between items-center pt-1 border-t border-zinc-100">
+                                                    <div className="text-sm font-black text-zinc-900">5. ยอดรวม: <span className="text-emerald-700">฿{bill.totalAmount.toLocaleString()}</span></div>
                                                     <button onClick={() => setSelectedInvoice(bill)} className="bg-zinc-900 text-white px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 shadow-sm">
                                                         <IconPrint /> ออกใบแจ้งหนี้
                                                     </button>
@@ -517,13 +788,14 @@ function doPost(e) {
                                 </div>
                             )}
 
+                            {/* TAB: Settings */}
                             {adminTab === 'settings' && (
                                 <div className="space-y-4">
                                     <div className="bg-white rounded-2xl p-5 border border-zinc-200 shadow-sm space-y-4">
                                         <h2 className="text-sm font-bold text-zinc-800 border-b pb-2">ตั้งค่าอัตราค่าบริการ</h2>
                                         <div className="grid grid-cols-2 gap-3">
                                             <div>
-                                                <label className="block text-xs font-bold text-zinc-600 mb-1">ค่าเช่าพื้นฐาน (บาท)</label>
+                                                <label className="block text-xs font-bold text-zinc-600 mb-1">4. ค่าเช่าพื้นฐาน (บาท)</label>
                                                 <input type="number" value={rates.rentRate} onChange={e => setRates({...rates, rentRate: Number(e.target.value)})} className="w-full border rounded-xl p-2.5 text-sm font-bold bg-zinc-50" />
                                             </div>
                                             <div>
@@ -531,25 +803,30 @@ function doPost(e) {
                                                 <input type="number" value={rates.trashFee} onChange={e => setRates({...rates, trashFee: Number(e.target.value)})} className="w-full border rounded-xl p-2.5 text-sm font-bold bg-zinc-50" />
                                             </div>
                                             <div>
-                                                <label className="block text-xs font-bold text-zinc-600 mb-1">ค่าน้ำ (บาท/หน่วย)</label>
+                                                <label className="block text-xs font-bold text-zinc-600 mb-1">อัตราค่าน้ำ (บาท/หน่วย)</label>
                                                 <input type="number" value={rates.waterRate} onChange={e => setRates({...rates, waterRate: Number(e.target.value)})} className="w-full border rounded-xl p-2.5 text-sm font-bold bg-zinc-50 text-sky-600" />
                                             </div>
                                             <div>
-                                                <label className="block text-xs font-bold text-zinc-600 mb-1">ค่าไฟ (บาท/หน่วย)</label>
+                                                <label className="block text-xs font-bold text-zinc-600 mb-1">อัตราค่าไฟ (บาท/หน่วย)</label>
                                                 <input type="number" value={rates.electricRate} onChange={e => setRates({...rates, electricRate: Number(e.target.value)})} className="w-full border rounded-xl p-2.5 text-sm font-bold bg-zinc-50 text-amber-600" />
                                             </div>
                                         </div>
                                     </div>
 
                                     <div className="bg-white rounded-2xl p-5 border border-zinc-200 shadow-sm space-y-3">
-                                        <h2 className="text-sm font-bold text-zinc-800 border-b pb-2">เชื่อมต่อ Google Sheets API</h2>
+                                        <h2 className="text-sm font-bold text-zinc-800 border-b pb-2">เชื่อมต่อ Google Sheets API (Auto Sync)</h2>
                                         <div>
                                             <label className="block text-xs font-bold text-zinc-600 mb-1">Google Web App URL</label>
                                             <input type="url" value={gasUrl} onChange={e => setGasUrl(e.target.value)} placeholder="https://script.google.com/macros/s/.../exec" className="w-full border rounded-xl p-2.5 text-xs font-mono bg-zinc-50" />
                                         </div>
-                                        <button onClick={() => setShowGasScriptModal(true)} className="w-full bg-zinc-100 text-zinc-700 font-bold py-2 rounded-xl text-xs">
-                                            ดูโค้ดสำหรับ Google Apps Script
-                                        </button>
+                                        <div className="flex gap-2">
+                                            <button onClick={fetchFromGoogleSheets} disabled={isLoadingSheet} className="flex-1 bg-emerald-700 text-white font-bold py-2.5 rounded-xl text-xs flex items-center justify-center gap-1">
+                                                <IconRefresh /> ดึงข้อมูลจาก Google Sheets
+                                            </button>
+                                            <button onClick={() => setShowGasScriptModal(true)} className="bg-zinc-100 text-zinc-700 font-bold px-3 py-2.5 rounded-xl text-xs">
+                                                ดูโค้ด Script
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
                             )}
@@ -559,7 +836,7 @@ function doPost(e) {
                             <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
                                 <div className="bg-white rounded-2xl max-w-md w-full p-5 space-y-3 max-h-[85vh] flex flex-col">
                                     <div className="flex justify-between items-center border-b pb-2">
-                                        <h3 className="font-bold text-zinc-800 text-sm">โค้ด Google Apps Script Backend</h3>
+                                        <h3 className="font-bold text-zinc-800 text-sm">โค้ด Google Apps Script Backend ตัวใหม่</h3>
                                         <button onClick={() => setShowGasScriptModal(false)} className="text-zinc-400 font-bold">✕</button>
                                     </div>
                                     <pre className="bg-zinc-900 text-emerald-400 p-3 rounded-xl text-[10px] font-mono overflow-y-auto flex-1 leading-relaxed">
@@ -606,7 +883,7 @@ function doPost(e) {
                             </div>
 
                             <div className="bg-zinc-50 rounded-xl p-3 mb-4 text-xs space-y-1 border border-zinc-200 font-medium">
-                                <div className="flex justify-between"><span>ผู้เช่า:</span> <span className="font-bold text-zinc-900">{bill.tenantName}</span></div>
+                                <div className="flex justify-between"><span>1. ชื่อร้าน / ผู้เช่า:</span> <span className="font-bold text-zinc-900">{bill.tenantName}</span></div>
                                 <div className="flex justify-between"><span>หมายเลขล็อค:</span> <span className="font-bold text-zinc-900">{bill.stallNumber}</span></div>
                                 <div className="flex justify-between"><span>รอบประจำเดือน:</span> <span className="font-bold text-zinc-900">{bill.billingMonth}</span></div>
                             </div>
@@ -622,25 +899,25 @@ function doPost(e) {
                                 </thead>
                                 <tbody className="divide-y divide-zinc-200">
                                     <tr>
-                                        <td className="py-2.5 px-2 font-medium">1. ค่าเช่าล็อคประจำเดือน</td>
+                                        <td className="py-2.5 px-2 font-medium">1. ค่าเช่าร้านประจำเดือน</td>
                                         <td className="py-2.5 px-2 text-center text-zinc-400">-</td>
                                         <td className="py-2.5 px-2 text-right text-zinc-400">-</td>
                                         <td className="py-2.5 px-2 text-right font-bold">{bill.rentRate.toLocaleString('th-TH', {minimumFractionDigits: 2})}</td>
                                     </tr>
                                     <tr>
-                                        <td className="py-2.5 px-2 font-medium">2. ค่าน้ำประปา</td>
+                                        <td className="py-2.5 px-2 font-medium">2. ค่าน้ำประปา (หน่วยค่าน้ำ)</td>
                                         <td className="py-2.5 px-2 text-center font-semibold">{bill.waterUnits}</td>
                                         <td className="py-2.5 px-2 text-right text-zinc-500">{bill.waterRate}</td>
                                         <td className="py-2.5 px-2 text-right font-bold">{bill.waterAmount.toLocaleString('th-TH', {minimumFractionDigits: 2})}</td>
                                     </tr>
                                     <tr>
-                                        <td className="py-2.5 px-2 font-medium">3. ค่าไฟฟ้า</td>
+                                        <td className="py-2.5 px-2 font-medium">3. ค่าไฟฟ้า (หน่วยค่าไฟ)</td>
                                         <td className="py-2.5 px-2 text-center font-semibold">{bill.electricUnits}</td>
                                         <td className="py-2.5 px-2 text-right text-zinc-500">{bill.electricRate}</td>
                                         <td className="py-2.5 px-2 text-right font-bold">{bill.electricAmount.toLocaleString('th-TH', {minimumFractionDigits: 2})}</td>
                                     </tr>
                                     <tr>
-                                        <td className="py-2.5 px-2 font-medium">4. ค่าเก็บขยะ/ส่วนกลาง</td>
+                                        <td className="py-2.5 px-2 font-medium">4. ค่าส่วนกลาง/ขยะ</td>
                                         <td className="py-2.5 px-2 text-center text-zinc-400">-</td>
                                         <td className="py-2.5 px-2 text-right text-zinc-400">-</td>
                                         <td className="py-2.5 px-2 text-right font-bold">{bill.trashFee.toLocaleString('th-TH', {minimumFractionDigits: 2})}</td>
@@ -649,7 +926,7 @@ function doPost(e) {
                             </table>
 
                             <div className="bg-zinc-900 text-white rounded-xl p-4 mb-4 flex justify-between items-center">
-                                <span className="font-bold text-sm">จำนวนเงินรวมทั้งสิ้น</span>
+                                <span className="font-bold text-sm">5. ยอดรวมทั้งสิ้น</span>
                                 <span className="text-xl font-black text-amber-400">฿{bill.totalAmount.toLocaleString('th-TH', {minimumFractionDigits: 2})}</span>
                             </div>
                         </div>
@@ -677,13 +954,14 @@ function doPost(e) {
                         <div className="p-4 space-y-5">
                             <div>
                                 <p className="text-xs text-zinc-500 font-medium">ยินดีต้อนรับ,</p>
-                                <p className="text-lg font-bold text-zinc-900">{currentUser.name}</p>
+                                <p className="text-lg font-bold text-zinc-900">1. ชื่อร้าน: {currentUser.name}</p>
+                                <p className="text-xs text-zinc-500 font-mono">หมายเลขล็อค: {currentUser.stallNumber}</p>
                             </div>
 
                             <div className="bg-zinc-900 rounded-3xl p-6 text-white shadow-xl relative overflow-hidden">
                                 <div className="relative z-10">
                                     <div className="flex justify-between items-start mb-2">
-                                        <span className="text-zinc-300 text-xs font-semibold">ยอดค้างชำระประจำเดือน</span>
+                                        <span className="text-zinc-300 text-xs font-semibold">5. ยอดรวมค้างชำระประจำเดือน</span>
                                         <button onClick={() => setSelectedInvoice(bill)} className="text-xs bg-white/10 text-white px-3 py-1 rounded-full flex items-center gap-1 font-semibold">
                                             <IconPrint /> ดูใบแจ้งหนี้
                                         </button>
@@ -694,10 +972,10 @@ function doPost(e) {
                                     </div>
 
                                     <div className="grid grid-cols-2 gap-2 text-xs text-zinc-300 border-t border-zinc-800 pt-3 mb-2 font-medium">
-                                        <div>ค่าเช่า: <span className="font-bold text-white">฿{bill.rentRate.toLocaleString()}</span></div>
-                                        <div>ค่าน้ำ: <span className="font-bold text-white">฿{bill.waterAmount.toLocaleString()}</span></div>
+                                        <div>2. หน่วยค่าน้ำ: <span className="font-bold text-white">{bill.waterUnits} u (฿{bill.waterAmount.toLocaleString()})</span></div>
+                                        <div>3. หน่วยค่าไฟ: <span className="font-bold text-white">{bill.electricUnits} u (฿{bill.electricAmount.toLocaleString()})</span></div>
+                                        <div>4. ค่าเช่าร้าน: <span className="font-bold text-white">฿{bill.rentRate.toLocaleString()}</span></div>
                                         <div>ค่าส่วนกลาง: <span className="font-bold text-white">฿{bill.trashFee.toLocaleString()}</span></div>
-                                        <div>ค่าไฟ: <span className="font-bold text-white">฿{bill.electricAmount.toLocaleString()}</span></div>
                                     </div>
                                 </div>
                             </div>
