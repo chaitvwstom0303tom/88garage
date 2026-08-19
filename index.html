@@ -232,11 +232,13 @@
 
             // State สำหรับฟอร์มกรอกบิลค่าเช่า
             const [billForm, setBillForm] = useState({
-                stallNumber: '', month: '', arrears: 0, waterFee: 0, electricFee: 0, commonFee: 0, internetFee: 0, otherFee: 0, status: 'รอชำระ'
+                stallNumber: '', month: '', arrears: 0, waterUnits: 0, electricUnits: 0, commonFee: 0, internetFee: 0, otherFee: 0, status: 'รอชำระ'
             });
 
             const calculateTotalBill = (form) => {
-                return (Number(form.arrears) || 0) + (Number(form.waterFee) || 0) + (Number(form.electricFee) || 0) + 
+                const waterFee = (Number(form.waterUnits) || 0) * 50;
+                const electricFee = (Number(form.electricUnits) || 0) * 10;
+                return (Number(form.arrears) || 0) + waterFee + electricFee + 
                        (Number(form.commonFee) || 0) + (Number(form.internetFee) || 0) + (Number(form.otherFee) || 0);
             };
 
@@ -244,8 +246,17 @@
                 e.preventDefault();
                 if (!billForm.stallNumber || !billForm.month) return showToast("กรุณาเลือกล็อคและระบุเดือน", "error");
 
+                const waterFee = (Number(billForm.waterUnits) || 0) * 50;
+                const electricFee = (Number(billForm.electricUnits) || 0) * 10;
                 const total = calculateTotalBill(billForm);
-                const newBill = { ...billForm, totalAmount: total, id: `${billForm.stallNumber}-${billForm.month}` };
+                
+                const newBill = { 
+                    ...billForm, 
+                    waterFee: waterFee, 
+                    electricFee: electricFee, 
+                    totalAmount: total, 
+                    id: `${billForm.stallNumber}-${billForm.month}` 
+                };
 
                 // อัปเดตบิล: ถ้าระบุล็อคและเดือนตรงกัน ให้แทนที่ของเดิม ถ้าไม่ตรงให้เพิ่มใหม่
                 const updatedBills = bills.filter(b => b.id !== newBill.id);
@@ -301,12 +312,12 @@
                                         <input type="number" min="0" value={billForm.arrears} onChange={e => setBillForm({...billForm, arrears: e.target.value})} className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm" />
                                     </div>
                                     <div>
-                                        <label className="text-xs text-zinc-400">ค่าไฟประจำเดือน (บาท)</label>
-                                        <input type="number" min="0" value={billForm.electricFee} onChange={e => setBillForm({...billForm, electricFee: e.target.value})} className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm" />
+                                        <label className="text-xs text-zinc-400">ค่าไฟ (หน่วยละ 10 บาท)</label>
+                                        <input type="number" min="0" value={billForm.electricUnits} onChange={e => setBillForm({...billForm, electricUnits: e.target.value})} className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm" placeholder="จำนวนหน่วย" />
                                     </div>
                                     <div>
-                                        <label className="text-xs text-zinc-400">ค่าน้ำประจำเดือน (บาท)</label>
-                                        <input type="number" min="0" value={billForm.waterFee} onChange={e => setBillForm({...billForm, waterFee: e.target.value})} className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm" />
+                                        <label className="text-xs text-zinc-400">ค่าน้ำ (หน่วยละ 50 บาท)</label>
+                                        <input type="number" min="0" value={billForm.waterUnits} onChange={e => setBillForm({...billForm, waterUnits: e.target.value})} className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm" placeholder="จำนวนหน่วย" />
                                     </div>
                                     <div>
                                         <label className="text-xs text-zinc-400">ค่าส่วนกลาง (บาท)</label>
@@ -515,11 +526,11 @@
                                             <span className="text-white">฿{(Number(latestBill.arrears)||0).toLocaleString()}</span>
                                         </div>
                                         <div className="flex justify-between text-sm">
-                                            <span className="text-zinc-400">ค่าไฟประจำเดือน:</span>
+                                            <span className="text-zinc-400">ค่าไฟประจำเดือน {latestBill.electricUnits !== undefined ? `(${latestBill.electricUnits} หน่วย)` : ''}:</span>
                                             <span className="text-white">฿{(Number(latestBill.electricFee)||0).toLocaleString()}</span>
                                         </div>
                                         <div className="flex justify-between text-sm">
-                                            <span className="text-zinc-400">ค่าน้ำประจำเดือน:</span>
+                                            <span className="text-zinc-400">ค่าน้ำประจำเดือน {latestBill.waterUnits !== undefined ? `(${latestBill.waterUnits} หน่วย)` : ''}:</span>
                                             <span className="text-white">฿{(Number(latestBill.waterFee)||0).toLocaleString()}</span>
                                         </div>
                                         <div className="flex justify-between text-sm">
