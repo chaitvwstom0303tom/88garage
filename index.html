@@ -178,7 +178,13 @@
                     if (password === '887799') onLoginAdmin();
                     else showToast('รหัสผ่าน Admin ไม่ถูกต้อง', 'error');
                 } else {
-                    const user = users.find(u => u.stallNumber.toLowerCase() === stall.toLowerCase() && u.password === password);
+                    // แก้ไข: ใช้ String() และ trim() เพื่อตัดช่องว่างที่อาจเผลอพิมพ์ ป้องกันปัญหาล็อกอินไม่ได้
+                    const user = users.find(u => 
+                        u && u.stallNumber && 
+                        String(u.stallNumber).trim().toLowerCase() === stall.trim().toLowerCase() && 
+                        String(u.password).trim() === password.trim()
+                    );
+                    
                     // เปิดช่องให้เทสถ้าไม่มีผู้ใช้ในระบบเลย (Bypass for testing)
                     if (user) {
                         onLoginTenant(user);
@@ -270,10 +276,20 @@
             const handleAddStore = (e) => {
                 e.preventDefault();
                 if(!newStore.stallNumber || !newStore.name) return showToast("กรอกข้อมูลให้ครบ", "error");
-                const updatedUsers = [...users, { ...newStore, id: Date.now() }];
+                
+                // แก้ไข: ตัดช่องว่าง (trim) ก่อนนำไปบันทึก เพื่อให้ตอนล็อกอินไม่ติด Error เว้นวรรค
+                const cleanStore = {
+                    ...newStore,
+                    stallNumber: newStore.stallNumber.trim(),
+                    password: newStore.password.trim(),
+                    id: Date.now()
+                };
+
+                const updatedUsers = [...users, cleanStore];
                 setUsers(updatedUsers);
                 syncToGoogleSheets(updatedUsers, 'save_stores');
                 setNewStore({ stallNumber: '', name: '', password: '', rent: '' });
+                showToast("ลงทะเบียนร้านค้าเรียบร้อย", "success");
             };
 
             return (
