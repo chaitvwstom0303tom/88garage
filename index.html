@@ -147,12 +147,13 @@
                                 users={users} setUsers={setUsers} syncToGoogleSheets={syncToGoogleSheets} showToast={showToast}
                                 repairs={repairs} setRepairs={setRepairs} pendingRepairsCount={pendingRepairsCount}
                                 bills={bills} setBills={setBills}
+                                announcements={announcements} setAnnouncements={setAnnouncements}
                             />
                         ) : (
                             <TenantDashboard 
                                 currentUser={currentUser} 
                                 repairs={repairs} setRepairs={setRepairs} syncToGoogleSheets={syncToGoogleSheets} showToast={showToast}
-                                bills={bills}
+                                bills={bills} announcements={announcements}
                             />
                         )}
                     </div>
@@ -230,9 +231,12 @@
             );
         };
 
-        const AdminDashboard = ({ gasUrl, setGasUrl, fetchFromGoogleSheets, users, setUsers, syncToGoogleSheets, showToast, repairs, setRepairs, pendingRepairsCount, bills, setBills }) => {
+        const AdminDashboard = ({ gasUrl, setGasUrl, fetchFromGoogleSheets, users, setUsers, syncToGoogleSheets, showToast, repairs, setRepairs, pendingRepairsCount, bills, setBills, announcements, setAnnouncements }) => {
             const [tab, setTab] = useState('bills'); // Default to bills tab based on prompt focus
             
+            // State สำหรับฟอร์มประกาศ
+            const [newAnnounce, setNewAnnounce] = useState({ title: '', content: '' });
+
             // State สำหรับเพิ่มร้านค้า
             const [newStore, setNewStore] = useState({ stallNumber: '', name: '', password: '', rent: '' });
 
@@ -273,6 +277,23 @@
                 showToast("บันทึกข้อมูลบิลเรียบร้อย", "success");
             };
 
+            const handleAddAnnounce = (e) => {
+                e.preventDefault();
+                if(!newAnnounce.title) return showToast("กรุณากรอกหัวข้อประกาศ", "error");
+                
+                const newItem = {
+                    id: Date.now(),
+                    date: new Date().toLocaleDateString('th-TH'),
+                    title: newAnnounce.title,
+                    content: newAnnounce.content
+                };
+                const updated = [newItem, ...announcements];
+                setAnnouncements(updated);
+                syncToGoogleSheets(updated, 'save_announcements');
+                setNewAnnounce({ title: '', content: '' });
+                showToast("เพิ่มประกาศเรียบร้อย", "success");
+            };
+
             const handleAddStore = (e) => {
                 e.preventDefault();
                 if(!newStore.stallNumber || !newStore.name) return showToast("กรอกข้อมูลให้ครบ", "error");
@@ -296,11 +317,50 @@
                 <div className="space-y-4">
                     {/* Admin Nav */}
                     <div className="flex overflow-x-auto hide-scrollbar gap-2 pb-2">
+                        <NavBtn active={tab==='announcements'} onClick={() => setTab('announcements')} icon="📢" text="ประกาศ" />
                         <NavBtn active={tab==='bills'} onClick={() => setTab('bills')} icon="💰" text="จัดการบิล" />
                         <NavBtn active={tab==='stores'} onClick={() => setTab('stores')} icon="🏪" text="จัดการร้าน" />
                         <NavBtn active={tab==='repairs'} onClick={() => setTab('repairs')} icon="🛠️" text="งานซ่อม" badge={pendingRepairsCount} />
                         <NavBtn active={tab==='settings'} onClick={() => setTab('settings')} icon="⚙️" text="ระบบ" />
                     </div>
+
+                    {/* Announcements Tab */}
+                    {tab === 'announcements' && (
+                        <div className="space-y-4">
+                            <form onSubmit={handleAddAnnounce} className="glass-panel p-4 rounded-xl space-y-3">
+                                <h2 className="font-bold text-yellow-500">📢 สร้างประกาศใหม่</h2>
+                                <div>
+                                    <label className="text-xs text-zinc-400">หัวข้อประกาศ</label>
+                                    <input type="text" required value={newAnnounce.title} onChange={e=>setNewAnnounce({...newAnnounce, title: e.target.value})} className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white" placeholder="เช่น แจ้งวันหยุดตลาด หรือ การจ่ายค่าเช่า" />
+                                </div>
+                                <div>
+                                    <label className="text-xs text-zinc-400">รายละเอียด</label>
+                                    <textarea required value={newAnnounce.content} onChange={e=>setNewAnnounce({...newAnnounce, content: e.target.value})} rows="3" className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white" placeholder="พิมพ์รายละเอียดประกาศ..."></textarea>
+                                </div>
+                                <button type="submit" className="w-full bg-yellow-500 text-black font-bold py-2 rounded-lg text-sm">กระจายประกาศ</button>
+                            </form>
+
+                            <div className="glass-panel p-4 rounded-xl space-y-3">
+                                <h2 className="font-bold text-yellow-500">ประวัติประกาศ</h2>
+                                {announcements.length === 0 ? <p className="text-sm text-zinc-500">ยังไม่มีประกาศ</p> : (
+                                    <div className="space-y-2">
+                                        {announcements.map(a => (
+                                            <div key={a.id} className="bg-zinc-900 p-3 rounded-lg border border-zinc-800">
+                                                <div className="text-xs text-zinc-400 mb-1">{a.date}</div>
+                                                <div className="font-bold text-sm text-white">{a.title}</div>
+                                                <p className="text-xs text-zinc-400 mt-1">{a.content}</p>
+                                                <button onClick={() => {
+                                                    const updated = announcements.filter(x => x.id !== a.id);
+                                                    setAnnouncements(updated);
+                                                    syncToGoogleSheets(updated, 'save_announcements');
+                                                }} className="text-xs text-red-500 bg-red-500/10 px-2 py-1 rounded mt-2">ลบประกาศ</button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
 
                     {/* Bills Tab (ใหม่) */}
                     {tab === 'bills' && (
@@ -481,8 +541,8 @@
             );
         };
 
-        const TenantDashboard = ({ currentUser, repairs, setRepairs, syncToGoogleSheets, showToast, bills }) => {
-            const [tab, setTab] = useState('bill'); // Default to bill tab for the new requirement
+        const TenantDashboard = ({ currentUser, repairs, setRepairs, syncToGoogleSheets, showToast, bills, announcements }) => {
+            const [tab, setTab] = useState('home'); // เปลี่ยนแท็บเริ่มต้นเป็นหน้าแรก (home)
             const [desc, setDesc] = useState('');
 
             const handleRepairSubmit = (e) => {
@@ -508,10 +568,38 @@
                 <div className="space-y-4">
                     {/* Tenant Nav */}
                     <div className="flex overflow-x-auto hide-scrollbar gap-2 pb-2">
+                        <NavBtn active={tab==='home'} onClick={() => setTab('home')} icon="📢" text="หน้าหลัก" />
                         <NavBtn active={tab==='bill'} onClick={() => setTab('bill')} icon="🧾" text="บิล/ค่าเช่า" />
                         <NavBtn active={tab==='repair'} onClick={() => setTab('repair')} icon="🛠️" text="แจ้งซ่อม" />
                         <NavBtn active={tab==='myrepairs'} onClick={() => setTab('myrepairs')} icon="📋" text="ประวัติซ่อม" />
                     </div>
+
+                    {/* Home / Announcements Tab */}
+                    {tab === 'home' && (
+                        <div className="space-y-4">
+                            <h2 className="font-bold text-yellow-500">📢 ประกาศจากตลาด</h2>
+                            
+                            {announcements.length === 0 ? (
+                                <div className="glass-panel p-8 text-center rounded-xl border border-zinc-700">
+                                    <div className="text-4xl mb-2 opacity-50">📭</div>
+                                    <p className="text-zinc-400 text-sm">ยังไม่มีประกาศในขณะนี้</p>
+                                </div>
+                            ) : (
+                                <div className="space-y-3">
+                                    {announcements.map(a => (
+                                        <div key={a.id} className="glass-panel p-5 rounded-xl border border-zinc-700 shadow-lg relative overflow-hidden">
+                                            <div className="absolute top-0 left-0 w-1 h-full bg-yellow-500"></div>
+                                            <div className="text-xs text-zinc-400 mb-1 flex items-center gap-1">
+                                                <span>🗓️</span> {a.date}
+                                            </div>
+                                            <h3 className="font-bold text-white text-lg leading-tight mb-2">{a.title}</h3>
+                                            <p className="text-sm text-zinc-300 whitespace-pre-line">{a.content}</p>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    )}
 
                     {/* Bill View Tab */}
                     {tab === 'bill' && (
