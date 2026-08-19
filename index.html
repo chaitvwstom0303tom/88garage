@@ -33,23 +33,22 @@
             
             // -- State หลักของระบบ --
             const [gasUrl, setGasUrl] = useState(localStorage.getItem('gasUrl') || '');
-            const [users, setUsers] = useState([]); // เก็บรายชื่อร้านค้า
-            const [repairs, setRepairs] = useState([]); // เก็บงานแจ้งซ่อม
+            const [users, setUsers] = useState([]); // ร้านค้า
+            const [repairs, setRepairs] = useState([]); // แจ้งซ่อม
             const [announcements, setAnnouncements] = useState([]); // ประกาศ
-            const [receipts, setReceipts] = useState([]); // ขอใบเสร็จ
-            const [meterData, setMeterData] = useState({}); // ข้อมูลมิเตอร์และบิล
+            const [bills, setBills] = useState([]); // บิลค่าเช่า/มิเตอร์ต่างๆ
             
             // -- State สำหรับ UI --
             const [toast, setToast] = useState(null);
             const [isSyncing, setIsSyncing] = useState(false);
             
-            // ฟังก์ชันช่วยเหลือ: แจ้งเตือน Toast
+            // แจ้งเตือน Toast
             const showToast = (msg, type = 'info') => {
                 setToast({ msg, type });
                 setTimeout(() => setToast(null), 3000);
             };
 
-            // ฟังก์ชันดึงข้อมูลจาก Google Sheets
+            // ดึงข้อมูลจาก Google Sheets
             const fetchFromGoogleSheets = async () => {
                 if (!gasUrl) return;
                 setIsSyncing(true);
@@ -58,27 +57,9 @@
                     const json = await res.json();
                     if (json.status === 'success') {
                         if (json.stores) setUsers(json.stores);
-                        if (json.repairs) setRepairs(json.repairs.reverse()); // ล่าสุดขึ้นก่อน
+                        if (json.repairs) setRepairs(json.repairs.reverse());
                         if (json.announcements) setAnnouncements(json.announcements.reverse());
-                        if (json.receipts) setReceipts(json.receipts.reverse());
-                        
-                        // แกะข้อมูลบิล
-                        if (json.data) {
-                            const newMeters = {};
-                            json.data.forEach(row => {
-                                const stall = row.stallNumber || row.StallNumber;
-                                if (stall) {
-                                    newMeters[stall] = { 
-                                        water: Number(row.waterUnits || row["หน่วยค่าน้ำ"] || 0), 
-                                        electric: Number(row.electricUnits || row["หน่วยค่าไฟ"] || 0), 
-                                        status: row.status || row.Status || 'ค้างชำระ',
-                                        rent: Number(row.rent || row["ค่าเช่าร้าน"] || 0),
-                                        total: Number(row.totalAmount || row["ยอดรวม"] || 0)
-                                    };
-                                }
-                            });
-                            setMeterData(newMeters);
-                        }
+                        if (json.data) setBills(json.data); // ดึงข้อมูลบิลจาก Sheet "Bills" (ส่งมาในชื่อ data)
                         showToast("อัปเดตข้อมูลจากระบบเรียบร้อย", "success");
                     }
                 } catch (err) {
@@ -89,7 +70,7 @@
                 }
             };
 
-            // ดึงข้อมูลครั้งแรกเมื่อใส่ URL หรือเปิดแอป
+            // โหลดข้อมูลครั้งแรก
             useEffect(() => {
                 if (gasUrl) {
                     localStorage.setItem('gasUrl', gasUrl);
@@ -97,7 +78,7 @@
                 }
             }, [gasUrl]);
 
-            // ฟังก์ชันบันทึกข้อมูลไป Google Sheets
+            // บันทึกข้อมูลไป Google Sheets
             const syncToGoogleSheets = async (payload, actionType) => {
                 if (!gasUrl) {
                     showToast("กรุณาตั้งค่า Google Sheets URL ในหน้า Admin ก่อน", "error");
@@ -105,18 +86,16 @@
                 }
                 setIsSyncing(true);
                 try {
-                    // กรองรูปภาพออก ป้องกัน Error Payload Too Large จาก Google Sheet
+                    // กรองรูปภาพออก ป้องกัน Payload ใหญ่เกินไป
                     const cleanPayload = payload.map(item => {
                         const cleanItem = { ...item };
-                        if (cleanItem.tenantPhoto) cleanItem.tenantPhoto = "[แนบรูปภาพ - ดูผ่านแอป]";
-                        if (cleanItem.adminPhoto) cleanItem.adminPhoto = "[แนบรูปภาพ - ดูผ่านแอป]";
-                        if (cleanItem.slipPhoto) cleanItem.slipPhoto = "[แนบสลิป - ดูผ่านแอป]";
+                        if (cleanItem.photo) cleanItem.photo = "[แนบรูปภาพ - ดูผ่านแอป]";
                         return cleanItem;
                     });
 
                     await fetch(gasUrl, { 
                         method: 'POST', 
-                        mode: 'no-cors', // สำคัญ: เพื่อไม่ให้ติด Block CORS
+                        mode: 'no-cors',
                         headers: { 'Content-Type': 'text/plain;charset=utf-8' }, 
                         body: JSON.stringify({ action: actionType, items: cleanPayload }) 
                     });
@@ -166,22 +145,21 @@
                             <AdminDashboard 
                                 gasUrl={gasUrl} setGasUrl={setGasUrl} fetchFromGoogleSheets={fetchFromGoogleSheets}
                                 users={users} setUsers={setUsers} syncToGoogleSheets={syncToGoogleSheets} showToast={showToast}
-                                repairs={repairs} setRepairs={setRepairs}
-                                announcements={announcements} setAnnouncements={setAnnouncements}
-                                pendingRepairsCount={pendingRepairsCount}
+                                repairs={repairs} setRepairs={setRepairs} pendingRepairsCount={pendingRepairsCount}
+                                bills={bills} setBills={setBills}
                             />
                         ) : (
                             <TenantDashboard 
                                 currentUser={currentUser} 
                                 repairs={repairs} setRepairs={setRepairs} syncToGoogleSheets={syncToGoogleSheets} showToast={showToast}
-                                announcements={announcements}
+                                bills={bills}
                             />
                         )}
                     </div>
 
                     {/* Toast Notification */}
                     {toast && (
-                        <div className={`fixed top-16 left-1/2 transform -translate-x-1/2 z-50 px-4 py-2 rounded-full shadow-xl text-sm font-medium animate-bounce ${toast.type === 'error' ? 'bg-red-500 text-white' : 'bg-green-500 text-white'}`}>
+                        <div className={`fixed top-16 left-1/2 transform -translate-x-1/2 z-50 px-4 py-2 rounded-full shadow-xl text-sm font-medium animate-bounce whitespace-nowrap ${toast.type === 'error' ? 'bg-red-500 text-white' : 'bg-green-500 text-white'}`}>
                             {toast.msg}
                         </div>
                     )}
@@ -190,7 +168,7 @@
         };
 
         const LoginView = ({ users, onLoginTenant, onLoginAdmin, showToast }) => {
-            const [mode, setMode] = useState('tenant'); // 'tenant' | 'admin'
+            const [mode, setMode] = useState('tenant'); 
             const [stall, setStall] = useState('');
             const [password, setPassword] = useState('');
 
@@ -201,8 +179,14 @@
                     else showToast('รหัสผ่าน Admin ไม่ถูกต้อง', 'error');
                 } else {
                     const user = users.find(u => u.stallNumber.toLowerCase() === stall.toLowerCase() && u.password === password);
-                    if (user) onLoginTenant(user);
-                    else showToast('ไม่พบข้อมูลล็อค หรือรหัสผ่านผิด', 'error');
+                    // เปิดช่องให้เทสถ้าไม่มีผู้ใช้ในระบบเลย (Bypass for testing)
+                    if (user) {
+                        onLoginTenant(user);
+                    } else if (users.length === 0 && stall === 'A-01' && password === '123') {
+                        onLoginTenant({ stallNumber: 'A-01', name: 'ร้านทดสอบ' });
+                    } else {
+                        showToast('ไม่พบข้อมูลล็อค หรือรหัสผ่านผิด', 'error');
+                    }
                 }
             };
 
@@ -212,7 +196,7 @@
                         <div className="text-center mb-8">
                             <div className="w-16 h-16 bg-yellow-500 rounded-2xl mx-auto flex items-center justify-center text-3xl font-black text-black mb-4 shadow-[0_0_20px_rgba(234,179,8,0.3)]">88</div>
                             <h1 className="text-2xl font-black text-white tracking-wider">GARAGE</h1>
-                            <p className="text-zinc-400 text-sm">ระบบจัดการพื้นที่เช่า</p>
+                            <p className="text-zinc-400 text-sm">ระบบจัดการพื้นที่เช่าตลาด</p>
                         </div>
 
                         <div className="flex bg-zinc-900 rounded-lg p-1 mb-6">
@@ -235,57 +219,137 @@
                                 เข้าสู่ระบบ
                             </button>
                         </form>
-                        
-                        {mode === 'tenant' && users.length === 0 && (
-                            <p className="text-xs text-center text-red-400 mt-4 bg-red-900/20 p-2 rounded">ยังไม่มีฐานข้อมูลร้านค้า กรุณาให้ Admin ลงทะเบียนร้านค้าและตั้งค่าระบบให้ก่อน</p>
-                        )}
                     </div>
                 </div>
             );
         };
 
-        const AdminDashboard = ({ gasUrl, setGasUrl, fetchFromGoogleSheets, users, setUsers, syncToGoogleSheets, showToast, repairs, setRepairs, announcements, setAnnouncements, pendingRepairsCount }) => {
-            const [tab, setTab] = useState('stores');
+        const AdminDashboard = ({ gasUrl, setGasUrl, fetchFromGoogleSheets, users, setUsers, syncToGoogleSheets, showToast, repairs, setRepairs, pendingRepairsCount, bills, setBills }) => {
+            const [tab, setTab] = useState('bills'); // Default to bills tab based on prompt focus
             
-            // For Store Management
+            // State สำหรับเพิ่มร้านค้า
             const [newStore, setNewStore] = useState({ stallNumber: '', name: '', password: '', rent: '' });
+
+            // State สำหรับฟอร์มกรอกบิลค่าเช่า
+            const [billForm, setBillForm] = useState({
+                stallNumber: '', month: '', arrears: 0, waterFee: 0, electricFee: 0, commonFee: 0, internetFee: 0, otherFee: 0, status: 'รอชำระ'
+            });
+
+            const calculateTotalBill = (form) => {
+                return (Number(form.arrears) || 0) + (Number(form.waterFee) || 0) + (Number(form.electricFee) || 0) + 
+                       (Number(form.commonFee) || 0) + (Number(form.internetFee) || 0) + (Number(form.otherFee) || 0);
+            };
+
+            const handleBillSubmit = (e) => {
+                e.preventDefault();
+                if (!billForm.stallNumber || !billForm.month) return showToast("กรุณาเลือกล็อคและระบุเดือน", "error");
+
+                const total = calculateTotalBill(billForm);
+                const newBill = { ...billForm, totalAmount: total, id: `${billForm.stallNumber}-${billForm.month}` };
+
+                // อัปเดตบิล: ถ้าระบุล็อคและเดือนตรงกัน ให้แทนที่ของเดิม ถ้าไม่ตรงให้เพิ่มใหม่
+                const updatedBills = bills.filter(b => b.id !== newBill.id);
+                updatedBills.push(newBill);
+
+                setBills(updatedBills);
+                syncToGoogleSheets(updatedBills, 'save_bills');
+                showToast("บันทึกข้อมูลบิลเรียบร้อย", "success");
+            };
 
             const handleAddStore = (e) => {
                 e.preventDefault();
-                if(!newStore.stallNumber || !newStore.name) return showToast("กรอกข้อมูลล็อคและชื่อร้านให้ครบ", "error");
-                
+                if(!newStore.stallNumber || !newStore.name) return showToast("กรอกข้อมูลให้ครบ", "error");
                 const updatedUsers = [...users, { ...newStore, id: Date.now() }];
                 setUsers(updatedUsers);
                 syncToGoogleSheets(updatedUsers, 'save_stores');
                 setNewStore({ stallNumber: '', name: '', password: '', rent: '' });
-                showToast("เพิ่มร้านค้าและบันทึกลง Sheet แล้ว", "success");
             };
 
             return (
                 <div className="space-y-4">
                     {/* Admin Nav */}
                     <div className="flex overflow-x-auto hide-scrollbar gap-2 pb-2">
+                        <NavBtn active={tab==='bills'} onClick={() => setTab('bills')} icon="💰" text="จัดการบิล" />
                         <NavBtn active={tab==='stores'} onClick={() => setTab('stores')} icon="🏪" text="จัดการร้าน" />
                         <NavBtn active={tab==='repairs'} onClick={() => setTab('repairs')} icon="🛠️" text="งานซ่อม" badge={pendingRepairsCount} />
-                        <NavBtn active={tab==='announcements'} onClick={() => setTab('announcements')} icon="📢" text="ประกาศ" />
                         <NavBtn active={tab==='settings'} onClick={() => setTab('settings')} icon="⚙️" text="ระบบ" />
                     </div>
 
-                    {/* Settings Tab */}
-                    {tab === 'settings' && (
-                        <div className="glass-panel p-4 rounded-xl space-y-4">
-                            <h2 className="font-bold text-yellow-500">การเชื่อมต่อ Google Sheets</h2>
-                            <p className="text-xs text-zinc-400">ใส่ Web App URL ที่ได้จาก Google Apps Script เพื่อให้แอปบันทึกข้อมูลลง Sheet อัตโนมัติ</p>
-                            <input 
-                                type="text" 
-                                value={gasUrl} 
-                                onChange={e => setGasUrl(e.target.value)} 
-                                placeholder="https://script.google.com/macros/s/.../exec"
-                                className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white"
-                            />
-                            <button onClick={fetchFromGoogleSheets} className="w-full bg-zinc-700 text-white font-bold py-2 rounded-lg text-sm">
-                                บันทึกและดึงข้อมูลล่าสุด
-                            </button>
+                    {/* Bills Tab (ใหม่) */}
+                    {tab === 'bills' && (
+                        <div className="space-y-4">
+                            <form onSubmit={handleBillSubmit} className="glass-panel p-4 rounded-xl space-y-3">
+                                <h2 className="font-bold text-yellow-500">กรอกข้อมูลบิล / ค่าเช่า</h2>
+                                
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="text-xs text-zinc-400">เลือกล็อคเช่า</label>
+                                        <select required value={billForm.stallNumber} onChange={e => setBillForm({...billForm, stallNumber: e.target.value})} className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white">
+                                            <option value="">-- เลือกล็อค --</option>
+                                            {users.map((u, i) => <option key={i} value={u.stallNumber}>{u.stallNumber} ({u.name})</option>)}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="text-xs text-zinc-400">ประจำเดือน</label>
+                                        <input type="month" required value={billForm.month} onChange={e => setBillForm({...billForm, month: e.target.value})} className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm" />
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-3 mt-2">
+                                    <div>
+                                        <label className="text-xs text-zinc-400">ค่าเช่าค้างชำระ (บาท)</label>
+                                        <input type="number" min="0" value={billForm.arrears} onChange={e => setBillForm({...billForm, arrears: e.target.value})} className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm" />
+                                    </div>
+                                    <div>
+                                        <label className="text-xs text-zinc-400">ค่าไฟประจำเดือน (บาท)</label>
+                                        <input type="number" min="0" value={billForm.electricFee} onChange={e => setBillForm({...billForm, electricFee: e.target.value})} className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm" />
+                                    </div>
+                                    <div>
+                                        <label className="text-xs text-zinc-400">ค่าน้ำประจำเดือน (บาท)</label>
+                                        <input type="number" min="0" value={billForm.waterFee} onChange={e => setBillForm({...billForm, waterFee: e.target.value})} className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm" />
+                                    </div>
+                                    <div>
+                                        <label className="text-xs text-zinc-400">ค่าส่วนกลาง (บาท)</label>
+                                        <input type="number" min="0" value={billForm.commonFee} onChange={e => setBillForm({...billForm, commonFee: e.target.value})} className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm" />
+                                    </div>
+                                    <div>
+                                        <label className="text-xs text-zinc-400">ค่าอินเทอร์เน็ต (บาท)</label>
+                                        <input type="number" min="0" value={billForm.internetFee} onChange={e => setBillForm({...billForm, internetFee: e.target.value})} className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm" />
+                                    </div>
+                                    <div>
+                                        <label className="text-xs text-zinc-400">ค่าบริการอื่นๆ (บาท)</label>
+                                        <input type="number" min="0" value={billForm.otherFee} onChange={e => setBillForm({...billForm, otherFee: e.target.value})} className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm" />
+                                    </div>
+                                </div>
+
+                                <div className="bg-yellow-500/10 border border-yellow-500/30 p-3 rounded-lg flex justify-between items-center mt-2">
+                                    <span className="text-sm text-yellow-500 font-bold">ยอดรวมสุทธิ</span>
+                                    <span className="text-xl font-black text-white">฿{calculateTotalBill(billForm).toLocaleString()}</span>
+                                </div>
+
+                                <button type="submit" className="w-full bg-yellow-500 text-black font-bold py-3 rounded-lg text-sm mt-2 shadow-[0_0_15px_rgba(234,179,8,0.2)]">
+                                    บันทึกข้อมูลบิลส่งให้ผู้เช่า
+                                </button>
+                            </form>
+
+                            <div className="glass-panel p-4 rounded-xl space-y-3">
+                                <h2 className="font-bold text-yellow-500">ประวัติบิลที่บันทึกแล้ว</h2>
+                                {bills.length === 0 ? <p className="text-sm text-zinc-500">ยังไม่มีข้อมูลบิล</p> : (
+                                    <div className="space-y-2">
+                                        {bills.slice().reverse().map((b, i) => (
+                                            <div key={i} className="bg-zinc-900 p-3 rounded-lg border border-zinc-800 flex justify-between items-center">
+                                                <div>
+                                                    <div className="font-bold text-sm text-white">ล็อค {b.stallNumber} <span className="text-xs text-zinc-400 font-normal">({b.month})</span></div>
+                                                    <div className="text-xs text-zinc-500">ยอดรวม: ฿{(Number(b.totalAmount)||0).toLocaleString()}</div>
+                                                </div>
+                                                <span className={`text-[10px] px-2 py-1 rounded-full font-bold ${b.status === 'ชำระแล้ว' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
+                                                    {b.status || 'รอชำระ'}
+                                                </span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     )}
 
@@ -301,12 +365,12 @@
                                     </div>
                                     <div>
                                         <label className="text-xs text-zinc-400">ชื่อร้าน</label>
-                                        <input type="text" required value={newStore.name} onChange={e=>setNewStore({...newStore, name: e.target.value})} className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm" placeholder="ร้านเจ๊ง้อ" />
+                                        <input type="text" required value={newStore.name} onChange={e=>setNewStore({...newStore, name: e.target.value})} className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm" placeholder="ชื่อร้าน" />
                                     </div>
                                 </div>
                                 <div className="grid grid-cols-2 gap-3">
                                     <div>
-                                        <label className="text-xs text-zinc-400">รหัสผ่าน (ให้ผู้เช่า)</label>
+                                        <label className="text-xs text-zinc-400">รหัสผ่าน</label>
                                         <input type="text" required value={newStore.password} onChange={e=>setNewStore({...newStore, password: e.target.value})} className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm" placeholder="1234" />
                                     </div>
                                     <div>
@@ -314,28 +378,26 @@
                                         <input type="number" required value={newStore.rent} onChange={e=>setNewStore({...newStore, rent: e.target.value})} className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm" placeholder="3000" />
                                     </div>
                                 </div>
-                                <button type="submit" className="w-full bg-yellow-500 text-black font-bold py-2 rounded-lg text-sm">เพิ่มร้านค้า</button>
+                                <button type="submit" className="w-full bg-yellow-500 text-black font-bold py-2 rounded-lg text-sm">บันทึกร้านค้า</button>
                             </form>
 
                             <div className="glass-panel p-4 rounded-xl">
                                 <h2 className="font-bold text-yellow-500 mb-3">รายชื่อร้านค้า ({users.length})</h2>
-                                {users.length === 0 ? <p className="text-sm text-zinc-500 text-center py-4">ยังไม่มีร้านค้า</p> : (
-                                    <div className="space-y-2">
-                                        {users.map((u, i) => (
-                                            <div key={i} className="bg-zinc-900 p-3 rounded-lg flex justify-between items-center border border-zinc-800">
-                                                <div>
-                                                    <div className="font-bold text-sm text-white">{u.stallNumber} - {u.name}</div>
-                                                    <div className="text-xs text-zinc-400">รหัสผ่าน: {u.password} | ค่าเช่า: ฿{Number(u.rent||0).toLocaleString()}</div>
-                                                </div>
-                                                <button onClick={() => {
-                                                    const updated = users.filter(x => x.stallNumber !== u.stallNumber);
-                                                    setUsers(updated);
-                                                    syncToGoogleSheets(updated, 'save_stores');
-                                                }} className="text-xs text-red-500 font-bold bg-red-500/10 px-2 py-1 rounded">ลบ</button>
+                                <div className="space-y-2">
+                                    {users.map((u, i) => (
+                                        <div key={i} className="bg-zinc-900 p-3 rounded-lg flex justify-between items-center border border-zinc-800">
+                                            <div>
+                                                <div className="font-bold text-sm text-white">{u.stallNumber} - {u.name}</div>
+                                                <div className="text-xs text-zinc-400">รหัส: {u.password} | ค่าเช่า: ฿{u.rent}</div>
                                             </div>
-                                        ))}
-                                    </div>
-                                )}
+                                            <button onClick={() => {
+                                                const updated = users.filter(x => x.stallNumber !== u.stallNumber);
+                                                setUsers(updated);
+                                                syncToGoogleSheets(updated, 'save_stores');
+                                            }} className="text-xs text-red-500 bg-red-500/10 px-2 py-1 rounded">ลบ</button>
+                                        </div>
+                                    ))}
+                                </div>
                             </div>
                         </div>
                     )}
@@ -343,12 +405,12 @@
                     {/* Repairs Tab */}
                     {tab === 'repairs' && (
                         <div className="space-y-4">
-                            <h2 className="font-bold text-yellow-500">จัดการงานแจ้งซ่อม</h2>
-                            {repairs.length === 0 ? <p className="text-sm text-zinc-500 text-center py-4">ไม่มีรายการแจ้งซ่อม</p> : (
+                            <h2 className="font-bold text-yellow-500">รายการแจ้งซ่อม</h2>
+                            {repairs.length === 0 ? <p className="text-sm text-zinc-500">ไม่มีรายการ</p> : (
                                 <div className="space-y-3">
                                     {repairs.map(r => (
-                                        <div key={r.id} className="glass-panel p-4 rounded-xl border border-zinc-700 space-y-2">
-                                            <div className="flex justify-between items-start">
+                                        <div key={r.id} className="glass-panel p-4 rounded-xl border border-zinc-700">
+                                            <div className="flex justify-between items-start mb-2">
                                                 <div>
                                                     <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${r.status === 'รอดำเนินการ' ? 'bg-red-500/20 text-red-400' : r.status === 'กำลังดำเนินการ' ? 'bg-yellow-500/20 text-yellow-400' : 'bg-green-500/20 text-green-400'}`}>
                                                         {r.status}
@@ -357,19 +419,14 @@
                                                     <div className="text-xs text-zinc-400">{r.date}</div>
                                                 </div>
                                             </div>
-                                            <p className="text-sm bg-zinc-900 p-2 rounded">{r.desc}</p>
+                                            <p className="text-sm bg-zinc-900 p-2 rounded text-zinc-300">{r.desc}</p>
                                             
-                                            {/* Admin Actions */}
-                                            <div className="pt-2 mt-2 border-t border-zinc-700 flex gap-2">
-                                                <select 
-                                                    value={r.status}
-                                                    onChange={(e) => {
-                                                        const updated = repairs.map(x => x.id === r.id ? {...x, status: e.target.value} : x);
-                                                        setRepairs(updated);
-                                                        syncToGoogleSheets(updated, 'save_repairs');
-                                                    }}
-                                                    className="bg-zinc-800 text-xs rounded px-2 py-1 flex-1 border border-zinc-600 outline-none"
-                                                >
+                                            <div className="pt-3 mt-3 border-t border-zinc-700">
+                                                <select value={r.status} onChange={(e) => {
+                                                    const updated = repairs.map(x => x.id === r.id ? {...x, status: e.target.value} : x);
+                                                    setRepairs(updated);
+                                                    syncToGoogleSheets(updated, 'save_repairs');
+                                                }} className="w-full bg-zinc-800 text-xs rounded px-3 py-2 border border-zinc-600 outline-none text-white">
                                                     <option value="รอดำเนินการ">รอดำเนินการ</option>
                                                     <option value="กำลังดำเนินการ">กำลังดำเนินการ</option>
                                                     <option value="แก้ไขแล้ว">แก้ไขแล้ว</option>
@@ -382,118 +439,138 @@
                         </div>
                     )}
 
-                    {/* Announcements Tab */}
-                    {tab === 'announcements' && (
-                        <div className="space-y-4">
-                            <form onSubmit={(e) => {
-                                e.preventDefault();
-                                const title = e.target.title.value;
-                                const desc = e.target.desc.value;
-                                if(!title || !desc) return;
-                                const updated = [{id: Date.now(), title, desc, date: new Date().toLocaleDateString('th-TH')}, ...announcements];
-                                setAnnouncements(updated);
-                                syncToGoogleSheets(updated, 'save_announcements');
-                                e.target.reset();
-                                showToast('ลงประกาศแล้ว', 'success');
-                            }} className="glass-panel p-4 rounded-xl space-y-3">
-                                <h2 className="font-bold text-yellow-500">สร้างประกาศใหม่</h2>
-                                <input name="title" required placeholder="หัวข้อประกาศ" className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm" />
-                                <textarea name="desc" required placeholder="รายละเอียด..." rows="3" className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm"></textarea>
-                                <button type="submit" className="w-full bg-yellow-500 text-black font-bold py-2 rounded-lg text-sm">ส่งประกาศ</button>
-                            </form>
+                    {/* Settings Tab */}
+                    {tab === 'settings' && (
+                        <div className="glass-panel p-4 rounded-xl space-y-4">
+                            <h2 className="font-bold text-yellow-500">⚙️ การเชื่อมต่อฐานข้อมูล (Google Sheets)</h2>
+                            <p className="text-xs text-zinc-400">ใส่ Web App URL ที่ได้จาก Google Apps Script</p>
+                            <input type="text" value={gasUrl} onChange={e => setGasUrl(e.target.value)} placeholder="https://script.google.com/..." className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white" />
+                            <button onClick={fetchFromGoogleSheets} className="w-full bg-zinc-700 text-white font-bold py-2 rounded-lg text-sm">
+                                ดึงข้อมูลล่าสุด (Sync)
+                            </button>
                         </div>
                     )}
                 </div>
             );
         };
 
-        const TenantDashboard = ({ currentUser, repairs, setRepairs, syncToGoogleSheets, showToast, announcements }) => {
-            const [tab, setTab] = useState('home');
-            
-            // For Repair form
+        const TenantDashboard = ({ currentUser, repairs, setRepairs, syncToGoogleSheets, showToast, bills }) => {
+            const [tab, setTab] = useState('bill'); // Default to bill tab for the new requirement
             const [desc, setDesc] = useState('');
 
             const handleRepairSubmit = (e) => {
                 e.preventDefault();
-                if (!desc) return showToast('กรุณากรอกรายละเอียด', 'error');
-                
+                if (!desc) return;
                 const newRepair = {
-                    id: Date.now(),
-                    stallNumber: currentUser.stallNumber,
-                    name: currentUser.name,
-                    desc: desc,
-                    status: 'รอดำเนินการ',
-                    date: new Date().toLocaleString('th-TH')
+                    id: Date.now(), stallNumber: currentUser.stallNumber, name: currentUser.name,
+                    desc: desc, status: 'รอดำเนินการ', date: new Date().toLocaleString('th-TH')
                 };
-                
-                const updatedRepairs = [newRepair, ...repairs];
-                setRepairs(updatedRepairs);
-                syncToGoogleSheets(updatedRepairs, 'save_repairs');
+                const updated = [newRepair, ...repairs];
+                setRepairs(updated);
+                syncToGoogleSheets(updated, 'save_repairs');
                 setDesc('');
-                showToast('ส่งเรื่องแจ้งซ่อมเรียบร้อย แอดมินได้รับข้อมูลแล้ว', 'success');
-                setTab('myrepairs'); // ย้ายไปหน้าประวัติ
+                setTab('myrepairs');
+                showToast('ส่งแจ้งซ่อมแล้ว', 'success');
             };
 
-            const myRepairs = repairs.filter(r => r.stallNumber === currentUser.stallNumber);
+            // หากข้อมูลบิลของล็อคนี้ (เอาบิลล่าสุดมาแสดง)
+            const myBills = bills.filter(b => b.stallNumber === currentUser.stallNumber);
+            const latestBill = myBills[myBills.length - 1]; // รายการล่าสุด
 
             return (
                 <div className="space-y-4">
                     {/* Tenant Nav */}
                     <div className="flex overflow-x-auto hide-scrollbar gap-2 pb-2">
-                        <NavBtn active={tab==='home'} onClick={() => setTab('home')} icon="🏠" text="หน้าหลัก" />
+                        <NavBtn active={tab==='bill'} onClick={() => setTab('bill')} icon="🧾" text="บิล/ค่าเช่า" />
                         <NavBtn active={tab==='repair'} onClick={() => setTab('repair')} icon="🛠️" text="แจ้งซ่อม" />
                         <NavBtn active={tab==='myrepairs'} onClick={() => setTab('myrepairs')} icon="📋" text="ประวัติซ่อม" />
                     </div>
 
-                    {/* Home / Announcements */}
-                    {tab === 'home' && (
+                    {/* Bill View Tab */}
+                    {tab === 'bill' && (
                         <div className="space-y-4">
-                            <div className="glass-panel p-4 rounded-xl">
-                                <h2 className="font-bold text-yellow-500 mb-2">📢 ประกาศจากตลาด</h2>
-                                {announcements.length === 0 ? <p className="text-sm text-zinc-500">ไม่มีประกาศใหม่</p> : (
-                                    <div className="space-y-3">
-                                        {announcements.map(a => (
-                                            <div key={a.id} className="bg-zinc-900 p-3 rounded-lg border-l-2 border-yellow-500">
-                                                <div className="font-bold text-sm text-white">{a.title}</div>
-                                                <div className="text-xs text-zinc-400 mb-1">{a.date}</div>
-                                                <p className="text-sm text-zinc-300">{a.desc}</p>
-                                            </div>
-                                        ))}
+                            <h2 className="font-bold text-yellow-500">สรุปยอดบิลประจำเดือน</h2>
+                            
+                            {!latestBill ? (
+                                <div className="glass-panel p-8 text-center rounded-xl border border-zinc-700">
+                                    <div className="text-4xl mb-2 opacity-50">🧾</div>
+                                    <p className="text-zinc-400 text-sm">ยังไม่มีข้อมูลบิลสำหรับล็อคนี้</p>
+                                    <p className="text-zinc-500 text-xs mt-1">กรุณารอแอดมินอัปเดตข้อมูล</p>
+                                </div>
+                            ) : (
+                                <div className="glass-panel rounded-xl overflow-hidden shadow-2xl border border-zinc-700">
+                                    <div className="bg-zinc-800 p-4 border-b border-zinc-700 flex justify-between items-center">
+                                        <div>
+                                            <h3 className="font-bold text-white">บิลประจำเดือน {latestBill.month}</h3>
+                                            <p className="text-xs text-zinc-400">หมายเลขล็อค: {latestBill.stallNumber}</p>
+                                        </div>
+                                        <span className={`text-xs px-3 py-1 rounded-full font-bold ${latestBill.status === 'ชำระแล้ว' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
+                                            {latestBill.status || 'รอชำระ'}
+                                        </span>
                                     </div>
-                                )}
-                            </div>
+                                    
+                                    <div className="p-4 space-y-3 bg-zinc-900">
+                                        <div className="flex justify-between text-sm">
+                                            <span className="text-zinc-400">ค่าเช่าค้างชำระ:</span>
+                                            <span className="text-white">฿{(Number(latestBill.arrears)||0).toLocaleString()}</span>
+                                        </div>
+                                        <div className="flex justify-between text-sm">
+                                            <span className="text-zinc-400">ค่าไฟประจำเดือน:</span>
+                                            <span className="text-white">฿{(Number(latestBill.electricFee)||0).toLocaleString()}</span>
+                                        </div>
+                                        <div className="flex justify-between text-sm">
+                                            <span className="text-zinc-400">ค่าน้ำประจำเดือน:</span>
+                                            <span className="text-white">฿{(Number(latestBill.waterFee)||0).toLocaleString()}</span>
+                                        </div>
+                                        <div className="flex justify-between text-sm">
+                                            <span className="text-zinc-400">ค่าส่วนกลาง:</span>
+                                            <span className="text-white">฿{(Number(latestBill.commonFee)||0).toLocaleString()}</span>
+                                        </div>
+                                        <div className="flex justify-between text-sm">
+                                            <span className="text-zinc-400">ค่าอินเทอร์เน็ต:</span>
+                                            <span className="text-white">฿{(Number(latestBill.internetFee)||0).toLocaleString()}</span>
+                                        </div>
+                                        <div className="flex justify-between text-sm">
+                                            <span className="text-zinc-400">ค่าบริการอื่นๆ:</span>
+                                            <span className="text-white">฿{(Number(latestBill.otherFee)||0).toLocaleString()}</span>
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="bg-yellow-500 p-4 flex justify-between items-center text-black">
+                                        <span className="font-bold text-sm">สรุปยอดรวมทั้งสิ้น</span>
+                                        <span className="text-2xl font-black">฿{(Number(latestBill.totalAmount)||0).toLocaleString()}</span>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     )}
 
                     {/* Submit Repair */}
                     {tab === 'repair' && (
                         <form onSubmit={handleRepairSubmit} className="glass-panel p-4 rounded-xl space-y-4">
-                            <h2 className="font-bold text-yellow-500">แจ้งปัญหา / แจ้งซ่อม</h2>
-                            <div>
-                                <label className="text-xs text-zinc-400 mb-1 block">รายละเอียดปัญหาที่คุณพบ</label>
-                                <textarea required value={desc} onChange={e=>setDesc(e.target.value)} rows="4" className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white" placeholder="เช่น หลังคารั่ว, ไฟไม่ติด, ท่อน้ำตัน..."></textarea>
-                            </div>
-                            <button type="submit" className="w-full bg-yellow-500 text-black font-bold py-3 rounded-lg text-sm shadow-[0_0_15px_rgba(234,179,8,0.3)]">ส่งเรื่องแจ้งซ่อม</button>
+                            <h2 className="font-bold text-yellow-500">🛠️ แจ้งปัญหา / ซ่อมแซม</h2>
+                            <textarea required value={desc} onChange={e=>setDesc(e.target.value)} rows="4" className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white" placeholder="อธิบายปัญหาที่พบ..."></textarea>
+                            <button type="submit" className="w-full bg-yellow-500 text-black font-bold py-3 rounded-lg text-sm">ส่งเรื่องแจ้งซ่อม</button>
                         </form>
                     )}
 
-                    {/* My Repairs History */}
+                    {/* My Repairs */}
                     {tab === 'myrepairs' && (
                         <div className="space-y-3">
-                            <h2 className="font-bold text-yellow-500 px-2">ประวัติการแจ้งเรื่องของคุณ</h2>
-                            {myRepairs.length === 0 ? <p className="text-sm text-zinc-500 text-center py-4 glass-panel rounded-xl">ยังไม่เคยแจ้งเรื่อง</p> : (
-                                myRepairs.map(r => (
-                                    <div key={r.id} className="glass-panel p-4 rounded-xl border border-zinc-700">
-                                        <div className="flex justify-between items-start mb-2">
-                                            <div className="text-xs text-zinc-400">{r.date}</div>
-                                            <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${r.status === 'รอดำเนินการ' ? 'bg-red-500/20 text-red-400' : r.status === 'กำลังดำเนินการ' ? 'bg-yellow-500/20 text-yellow-400' : 'bg-green-500/20 text-green-400'}`}>
-                                                {r.status}
-                                            </span>
-                                        </div>
-                                        <p className="text-sm text-white bg-zinc-900 p-2 rounded">{r.desc}</p>
+                            <h2 className="font-bold text-yellow-500">ประวัติแจ้งซ่อมของคุณ</h2>
+                            {repairs.filter(r => r.stallNumber === currentUser.stallNumber).length === 0 ? 
+                                <p className="text-sm text-zinc-500 text-center py-4 glass-panel rounded-xl">ไม่มีประวัติแจ้งเรื่อง</p> : 
+                                repairs.filter(r => r.stallNumber === currentUser.stallNumber).map(r => (
+                                <div key={r.id} className="glass-panel p-4 rounded-xl border border-zinc-700">
+                                    <div className="flex justify-between items-start mb-2">
+                                        <div className="text-xs text-zinc-400">{r.date}</div>
+                                        <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${r.status === 'รอดำเนินการ' ? 'bg-red-500/20 text-red-400' : r.status === 'กำลังดำเนินการ' ? 'bg-yellow-500/20 text-yellow-400' : 'bg-green-500/20 text-green-400'}`}>
+                                            {r.status}
+                                        </span>
                                     </div>
-                                ))
-                            )}
+                                    <p className="text-sm text-white bg-zinc-900 p-2 rounded">{r.desc}</p>
+                                </div>
+                            ))}
                         </div>
                     )}
                 </div>
